@@ -419,6 +419,51 @@
     .vote-like   { color: var(--green); font-weight: 600; }
     .vote-dislike{ color: var(--red);   font-weight: 600; }
 
+    /* ── Streamer decks ─────────────────────────────────── */
+    .status-approved { display:inline-flex; align-items:center; gap:5px; color:var(--green); font-weight:600; font-size:12px; }
+    .status-pending  { display:inline-flex; align-items:center; gap:5px; color:#D97706;      font-weight:600; font-size:12px; }
+    .status-rejected { display:inline-flex; align-items:center; gap:5px; color:var(--red);   font-weight:600; font-size:12px; }
+    .reason-pill {
+      display: inline-block;
+      background: #FEF2F2;
+      color: #991B1B;
+      border: 1px solid #FECACA;
+      border-radius: 5px;
+      padding: 2px 8px;
+      font-size: 11px;
+      max-width: 260px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .sd-stats { font-size:12px; color:var(--muted); white-space:nowrap; }
+    .sd-name  { font-weight:600; font-size:13px; }
+    .sd-streamer { font-size:12px; color:var(--muted); }
+    .sd-summary {
+      display: flex; gap: 18px; flex-wrap: wrap;
+      padding: 12px 20px;
+      border-bottom: 1px solid var(--border);
+      font-size: 13px;
+    }
+    .sd-summary .s-item { display:flex; align-items:center; gap:6px; }
+    .sd-summary .s-dot  { width:9px; height:9px; border-radius:50%; flex-shrink:0; }
+    .sd-summary .s-dot.green  { background:var(--green); }
+    .sd-summary .s-dot.amber  { background:#F59E0B; }
+    .sd-summary .s-dot.red    { background:var(--red); }
+    .filter-tabs { display:flex; gap:4px; }
+    .filter-tab {
+      padding: 5px 12px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 12px;
+      cursor: pointer;
+      background: var(--surface);
+      color: var(--muted);
+      transition: all .12s;
+    }
+    .filter-tab:hover { background: var(--accent-lt); color: var(--text); }
+    .filter-tab.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
     /* ── Empty state ─────────────────────────────────────── */
     .empty {
       padding: 40px;
@@ -484,6 +529,10 @@
       </div>
       <div class="nav-item" data-page="votes" onclick="showPage('votes', this)">
         <span class="icon">◆</span> Голоса
+      </div>
+      <div class="nav-label">HSGuru</div>
+      <div class="nav-item" data-page="streamer-decks" onclick="showPage('streamer-decks', this)">
+        <span class="icon">🎮</span> Колоды стримеров
       </div>
       <div class="nav-label">База данных</div>
       <div class="nav-item" data-page="schema" onclick="showPage('schema', this)">
@@ -628,6 +677,44 @@
         </div>
       </div><!-- /votes -->
 
+      <!-- ═══ PAGE: Streamer Decks ══════════════════ -->
+      <div id="page-streamer-decks" class="page">
+        <div class="section">
+          <div class="section-header">
+            <h3>Колоды стримеров (HSGuru)</h3>
+            <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+              <div class="filter-tabs" id="sd-filter-tabs">
+                <button class="filter-tab active" data-filter="all"      onclick="sdSetFilter('all',this)">Все</button>
+                <button class="filter-tab"         data-filter="approved" onclick="sdSetFilter('approved',this)">✅ Опубликовано</button>
+                <button class="filter-tab"         data-filter="pending"  onclick="sdSetFilter('pending',this)">⏳ Ожидает</button>
+                <button class="filter-tab"         data-filter="rejected" onclick="sdSetFilter('rejected',this)">❌ Отклонено</button>
+              </div>
+              <input id="sd-search" type="text" placeholder="Поиск по названию / стримеру…"
+                     style="width:220px;padding:6px 10px;border:1px solid var(--border);border-radius:7px;font-size:13px;"
+                     oninput="sdRender()" />
+            </div>
+          </div>
+          <div class="sd-summary" id="sd-summary"></div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Колода / Стример</th>
+                  <th>Формат</th>
+                  <th>Игр / Стат</th>
+                  <th>Статус</th>
+                  <th>Причина / Дата</th>
+                </tr>
+              </thead>
+              <tbody id="sd-tbody">
+                <tr><td colspan="6" class="empty"><span class="spinner"></span>Загрузка данных с HSGuru…</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div><!-- /streamer-decks -->
+
       <!-- ═══ PAGE: Schema ═══════════════════════════ -->
       <div id="page-schema" class="page">
 
@@ -757,10 +844,11 @@ function refreshCurrent() {
 }
 
 function pageInit(name) {
-  if (name === 'overview') loadOverview();
-  if (name === 'decks')    loadDecks(1);
-  if (name === 'votes')    loadVotes();
-  if (name === 'schema')   loadSchema();
+  if (name === 'overview')        loadOverview();
+  if (name === 'decks')           loadDecks(1);
+  if (name === 'votes')           loadVotes();
+  if (name === 'schema')          loadSchema();
+  if (name === 'streamer-decks')  loadStreamerDecks();
 }
 
 // ── API calls ────────────────────────────────────────────
@@ -1028,6 +1116,100 @@ async function loadSchema() {
     $('schema-grid').innerHTML = '<div class="empty">Ошибка загрузки схемы</div>';
     console.error(e);
   }
+}
+
+// ── Streamer Decks ─────────────────────────────────────────
+let _sdAllDecks = [];
+let _sdFilter = 'all';
+
+async function loadStreamerDecks() {
+  $('sd-tbody').innerHTML = `<tr><td colspan="6" class="empty"><span class="spinner"></span>Загрузка данных с HSGuru… (может занять ~10 сек)</td></tr>`;
+  $('sd-summary').innerHTML = '';
+  try {
+    _sdAllDecks = await apiFetch('/admin/streamer-decks');
+    sdRender();
+  } catch(e) {
+    $('sd-tbody').innerHTML = `<tr><td colspan="6" class="empty">Ошибка загрузки данных</td></tr>`;
+    console.error(e);
+  }
+}
+
+function sdSetFilter(f, el) {
+  _sdFilter = f;
+  document.querySelectorAll('.filter-tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  sdRender();
+}
+
+function sdRender() {
+  const search = ($('sd-search').value || '').toLowerCase().trim();
+  const tbody  = $('sd-tbody');
+
+  let decks = _sdAllDecks;
+
+  if (_sdFilter !== 'all') {
+    decks = decks.filter(d => d.status === _sdFilter);
+  }
+
+  if (search) {
+    decks = decks.filter(d =>
+      (d.deck_name || '').toLowerCase().includes(search) ||
+      (d.streamer  || '').toLowerCase().includes(search)
+    );
+  }
+
+  const total    = _sdAllDecks.length;
+  const approved = _sdAllDecks.filter(d => d.status === 'approved').length;
+  const pending  = _sdAllDecks.filter(d => d.status === 'pending').length;
+  const rejected = _sdAllDecks.filter(d => d.status === 'rejected').length;
+  $('sd-summary').innerHTML = `
+    <div class="s-item"><span class="s-dot"></span><b>${total}</b>&nbsp;всего</div>
+    <div class="s-item"><span class="s-dot green"></span><b>${approved}</b>&nbsp;опубликовано</div>
+    <div class="s-item"><span class="s-dot amber"></span><b>${pending}</b>&nbsp;ожидает</div>
+    <div class="s-item"><span class="s-dot red"></span><b>${rejected}</b>&nbsp;отклонено</div>
+  `;
+
+  if (!decks.length) {
+    tbody.innerHTML = `<tr><td colspan="6" class="empty">Ничего не найдено</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = decks.map((d, i) => {
+    let statusHtml;
+    if (d.status === 'approved') {
+      statusHtml = `<span class="status-approved">✅ Опубликовано</span>`;
+    } else if (d.status === 'pending') {
+      statusHtml = `<span class="status-pending">⏳ Ожидает</span>`;
+    } else {
+      statusHtml = `<span class="status-rejected">❌ Отклонено</span>`;
+    }
+
+    let reasonHtml = '—';
+    if (d.status === 'approved' && d.published_at) {
+      reasonHtml = `<span style="color:var(--muted);font-size:12px;">📅 ${fmtDate(d.published_at)}</span>`;
+    } else if (d.status === 'rejected' && d.rejection_reason) {
+      reasonHtml = `<span class="reason-pill" title="${d.rejection_reason}">${d.rejection_reason}</span>`;
+    }
+
+    const wr = d.total_games > 0
+      ? `<span style="font-size:11px;color:${d.wins / d.total_games >= 0.5 ? 'var(--green)' : 'var(--red)'}">
+           ${(d.wins / d.total_games * 100).toFixed(0)}%
+         </span>`
+      : '';
+    const statsHtml = `<span class="sd-stats">${d.total_games}&nbsp;игр&nbsp;${d.wins}–${d.losses}&nbsp;${wr}</span>`;
+
+    return `<tr>
+      <td style="color:var(--muted);font-size:12px;">${i + 1}</td>
+      <td>
+        <div class="sd-name">${d.deck_name || '—'}</div>
+        <div class="sd-streamer">${d.streamer || ''}</div>
+      </td>
+      <td>${modeBadge(d.deck_mode || d.format)}</td>
+      <td>${statsHtml}</td>
+      <td>${statusHtml}</td>
+      <td>${reasonHtml}</td>
+    </tr>`;
+  }).join('');
 }
 
 // ── Init ──────────────────────────────────────────────────

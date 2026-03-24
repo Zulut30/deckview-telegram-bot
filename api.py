@@ -263,3 +263,18 @@ async def admin_schema(x_api_key: str | None = Header(default=None)):
     """Метаданные схемы базы данных."""
     _auth(x_api_key)
     return _db.get_db_schema_info()
+
+
+@app.get("/admin/streamer-decks", tags=["Private"])
+async def admin_streamer_decks(x_api_key: str | None = Header(default=None)):
+    """
+    Возвращает все колоды, которые бот видит на HSGuru, с оценкой статуса:
+    - approved  — уже опубликована на сайт
+    - pending   — новая, пройдёт публикацию при следующей проверке
+    - rejected  — отклонена с указанием причины
+    """
+    _auth(x_api_key)
+    import asyncio
+    loop = asyncio.get_event_loop()
+    decks = await loop.run_in_executor(None, hsguru_scraper.get_all_decks_with_status)
+    return decks

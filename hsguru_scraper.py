@@ -862,6 +862,141 @@ async def check_and_publish_all(publish_callback: Callable, archetypes: Dict[str
     return published_count
 
 
+def get_all_decks_with_status() -> List[Dict]:
+    """
+    Возвращает ВСЕ колоды, которые бот видит на HSGuru, с оценкой статуса каждой.
+
+    Каждый элемент списка содержит:
+        deck_name, streamer, format, wins, losses, total_games, deck_code,
+        approved  — True если уже опубликована,
+        published_at — дата публикации (str ISO или None),
+        rejection_reason — причина отказа (str или None если одобрена/ожидает),
+        status — "approved" | "rejected" | "pending"
+    """
+    MIN_GAMES = 20
+
+    try:
+        html = fetch_html()
+    except Exception as e:
+        print(f"[HSGuru] get_all_decks_with_status: ошибка загрузки страницы: {e}")
+        return []
+
+    archetypes = load_archetypes()
+    decks = parse_decks(html, archetypes)
+    seen_data = load_seen()
+
+    # Восстанавливаем last_published_format
+    last_published_format = seen_data.get("last_published_format", "")
+    if not last_published_format and seen_data.get("decks"):
+        last_deck_info = None
+        last_date = None
+        for dk_code, dk_info in seen_data["decks"].items():
+            pa = dk_info.get("published_at", "")
+            if pa:
+                try:
+                    dt = datetime.fromisoformat(pa)
+                    if last_date is None or dt > last_date:
+                        last_date = dt
+                        last_deck_info = dk_info
+                except Exception:
+                    pass
+        if last_deck_info and last_deck_info.get("format"):
+            last_published_format = last_deck_info["format"]
+
+    result = []
+    # Чтобы корректно считать wild-consecutive для pending-колод,
+    # отслеживаем «последний формат» при симуляции публикаций
+    simulated_last_format = last_published_format
+
+    for deck in decks:
+        deck_code = deck["deck_code"]
+        wins = deck.get("wins", 0) or 0
+        losses = deck.get("losses", 0) or 0
+        total_games = deck.get("total_games", 0) or (wins + losses)
+        deck_format = deck.get("format", "")
+        deck_mode = FORMAT_MAP.get(deck_format, deck_format)
+        deck_name = deck.get("deck_name", "")
+
+        # --- Уже опубликована? ---
+        if deck_code in seen_data["codes"]:
+            pub_info = seen_data["decks"].get(deck_code, {})
+            result.append({
+                "deck_name": deck_name,
+                "streamer": deck.get("streamer", ""),
+                "format": deck_format,
+                "deck_mode": deck_mode,
+                "wins": wins,
+                "losses": losses,
+                "total_games": total_games,
+                "deck_code": deck_code,
+                "approved": True,
+                "published_at": pub_info.get("published_at"),
+                "rejection_reason": None,
+                "status": "approved",
+            })
+            continue
+
+        # --- Извлекаем карты (нужно для дубликата по картам) ---
+        deck_cards = get_deck_cards_set(deck_code)
+
+        # --- Дубликат по коду (уже проверено выше, но оставим для явности) ---
+        rejection_reason = None
+
+        if deck_cards:
+            # Дубликат по картам
+            for ex_code, ex_data in seen_data["decks"].items():
+                ex_cards = ex_data.get("cards", set())
+                sim = calculate_deck_similarity(deck_cards, ex_cards)
+                if sim >= 0.90:
+                    rejection_reason = f"Дубликат по картам ({sim:.0%} схожесть)"
+                    break
+
+            # Дубликат по названию
+            if rejection_reason is None:
+                name_lower = deck_name.strip().lower()
+                if name_lower and name_lower not in GENERIC_DECK_NAMES:
+                    for ex_code, ex_data in seen_data["decks"].items():
+                        ex_name = (ex_data.get("name") or "").strip().lower()
+                        if ex_name and ex_name == name_lower:
+                            rejection_reason = f"Дубликат по названию «{deck_name}»"
+                            break
+        else:
+            rejection_reason = "Не удалось прочитать карты"
+
+        # --- Мало игр ---
+        if rejection_reason is None and total_games < MIN_GAMES:
+            rejection_reason = f"Мало игр ({total_games} < {MIN_GAMES})"
+
+        # --- Вольная подряд (используем simulated_last_format) ---
+        if rejection_reason is None and deck_mode == "Вольный" and simulated_last_format == "Вольный":
+            rejection_reason = "Вольная колода подряд"
+
+        if rejection_reason:
+            status = "rejected"
+        else:
+            status = "pending"
+            # Симулируем «публикацию» чтобы следующие pending-колоды
+            # правильно видели wild-consecutive
+            simulated_last_format = deck_mode
+
+        result.append({
+            "deck_name": deck_name,
+            "streamer": deck.get("streamer", ""),
+            "format": deck_format,
+            "deck_mode": deck_mode,
+            "wins": wins,
+            "losses": losses,
+            "total_games": total_games,
+            "deck_code": deck_code,
+            "approved": False,
+            "published_at": None,
+            "rejection_reason": rejection_reason,
+            "status": status,
+        })
+
+    return result
+
+
 # Обратная совместимость: check_and_publish_one вызывает check_and_publish_all
 async def check_and_publish_one(publish_callback: Callable, archetypes: Dict[str, str]) -> bool:
     count = await check_and_publish_all(publish_callback, archetypes)
