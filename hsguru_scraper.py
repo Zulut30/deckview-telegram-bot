@@ -641,8 +641,9 @@ async def daily_statistics_scheduler(statistics_callback: Optional[Callable] = N
 async def run_loop(publish_callback: Callable, statistics_callback: Optional[Callable] = None):
     """
     Основной цикл парсера HSGuru.
-    Публикует по 1 колоде каждые 30 минут (максимум 2 в час).
-    
+    Публикует ВСЕ новые подходящие колоды на сайт (WordPress) при каждой проверке.
+    В Telegram-канал публикует строго раз в 2 часа (логика в publish_callback / bot.py).
+
     Args:
         publish_callback: Асинхронная функция для публикации колоды
                          Принимает dict с полями: deck_code, deck_name, streamer, format
@@ -651,31 +652,25 @@ async def run_loop(publish_callback: Callable, statistics_callback: Optional[Cal
     if not config.HSGURU_ENABLED:
         print("[HSGuru] Парсер отключен (HSGURU_ENABLED=0)")
         return
-    
-    # Интервал между публикациями: 30 минут (1800 секунд) - для WordPress
-    PUBLISH_INTERVAL = 30 * 60  # 30 минут
-    MAX_DECKS_PER_HOUR = 2  # Максимум 2 колоды в час (60 / 30 = 2)
-    
-    # Интервал публикации в Telegram канал: 2 часа (7200 секунд)
-    TELEGRAM_CHANNEL_INTERVAL = 2 * 60 * 60  # 2 часа
-    
+
+    # Интервал между проверками HSGuru (берём из конфига, по умолчанию 30 мин)
+    CHECK_INTERVAL = config.HSGURU_INTERVAL_SECONDS  # 1800 сек = 30 мин
+
     print(f"[HSGuru] ✓ Парсер запущен")
-    print(f"[HSGuru] Режим WordPress: по 1 колоде каждые {PUBLISH_INTERVAL // 60} мин")
-    print(f"[HSGuru] Режим Telegram канал: каждые {TELEGRAM_CHANNEL_INTERVAL // 60} мин (каждые 2 часа)")
-    
+    print(f"[HSGuru] Режим WordPress: все новые колоды публикуются сразу при каждой проверке")
+    print(f"[HSGuru] Режим Telegram канал: строго раз в 2 часа")
+    print(f"[HSGuru] Интервал проверки HSGuru: каждые {CHECK_INTERVAL // 60} мин")
+
     # Запускаем планировщик статистики в фоне
     if statistics_callback:
         asyncio.create_task(daily_statistics_scheduler(statistics_callback))
-    
+
     # Загружаем архетипы один раз
     archetypes = load_archetypes()
-    
-    # Очередь времени публикаций за последний час
-    publish_times: deque = deque()
-    
+
     # Первая проверка через 30 секунд после старта
     await asyncio.sleep(30)
-    
+
     while True:
         try:
             # Проверка приостановки постинга администратором
@@ -684,79 +679,61 @@ async def run_loop(publish_callback: Callable, statistics_callback: Optional[Cal
                 await asyncio.sleep(60)
                 continue
 
-            # Очищаем старые записи (старше 1 часа)
-            now = datetime.now()
-            while publish_times and (now - publish_times[0]).total_seconds() > 3600:
-                publish_times.popleft()
-            
-            # Проверяем лимит на час
-            if len(publish_times) >= MAX_DECKS_PER_HOUR:
-                wait_time = 3600 - (now - publish_times[0]).total_seconds()
-                wait_minutes = int(wait_time / 60) + 1
-                print(f"[HSGuru] ⚠ Достигнут лимит ({MAX_DECKS_PER_HOUR} колод в час). Ждём {wait_minutes} мин...")
-                await asyncio.sleep(wait_time)
-                continue
-            
-            # Пытаемся найти и опубликовать одну колоду
-            published = await check_and_publish_one(publish_callback, archetypes)
-            
-            if published:
-                publish_times.append(now)
-                print(f"[HSGuru] ✓ Опубликовано. Колод в этот час: {len(publish_times)}/{MAX_DECKS_PER_HOUR}")
-            
+            # Публикуем ВСЕ новые подходящие колоды
+            count = await check_and_publish_all(publish_callback, archetypes)
+
+            if count > 0:
+                print(f"[HSGuru] ✓ За эту проверку опубликовано колод на сайт: {count}")
+            else:
+                print(f"[HSGuru] Нет новых колод для публикации")
+
         except Exception as e:
             print(f"[HSGuru] Ошибка в цикле: {e}")
             import traceback
             traceback.print_exc()
-        
-        # Ждём до следующей попытки публикации
-        print(f"[HSGuru] Следующая проверка через {PUBLISH_INTERVAL // 60} мин...")
-        await asyncio.sleep(PUBLISH_INTERVAL)
+
+        print(f"[HSGuru] Следующая проверка через {CHECK_INTERVAL // 60} мин...")
+        await asyncio.sleep(CHECK_INTERVAL)
 
 
-async def check_and_publish_one(publish_callback: Callable, archetypes: Dict[str, str]) -> bool:
+async def check_and_publish_all(publish_callback: Callable, archetypes: Dict[str, str]) -> int:
     """
-    Проверяет новые колоды и публикует ОДНУ колоду (первую подходящую).
-    
+    Проверяет новые колоды и публикует ВСЕ подходящие на сайт (WordPress).
+    В Telegram-канал публикует только одну раз в 2 часа — это контролируется
+    внутри publish_callback (bot.publish_hsguru_deck).
+
     Returns:
-        True если колода была опубликована, False если нет подходящих
+        Количество успешно опубликованных колод за этот вызов
     """
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     print(f"\n[HSGuru] === Проверка {timestamp} ===")
-    
+
     # Загружаем HTML
     try:
         loop = asyncio.get_event_loop()
         html = await loop.run_in_executor(None, fetch_html)
     except Exception as e:
         print(f"[HSGuru] Ошибка загрузки страницы: {e}")
-        return False
-    
+        return 0
+
     # Парсим колоды
     decks = parse_decks(html, archetypes)
     print(f"[HSGuru] Найдено колод на сайте: {len(decks)}")
-    
+
     if not decks:
-        return False
-    
+        return 0
+
     # Загружаем уже опубликованные
     seen_data = load_seen()
-    
-    # Фильтруем новые колоды с проверкой дубликатов и минимального количества игр
+
     MIN_GAMES = 20  # Минимум 20 игр для публикации
-    new_decks = []
-    filtered_low_games = 0
-    filtered_wild_consecutive = 0
-    
-    # Получаем режим последней опубликованной колоды
+
+    # Восстанавливаем last_published_format если пуст
     last_published_format = seen_data.get("last_published_format", "")
-    
-    # ДОПОЛНИТЕЛЬНАЯ ПРОВЕРКА: Если last_published_format пуст, вычисляем из последней опубликованной колоды
     if not last_published_format and seen_data.get("decks"):
-        # Находим последнюю опубликованную колоду по дате
         last_deck = None
         last_date = None
-        for deck_code, deck_info in seen_data["decks"].items():
+        for deck_code_iter, deck_info in seen_data["decks"].items():
             published_at_str = deck_info.get("published_at", "")
             if published_at_str:
                 try:
@@ -766,159 +743,126 @@ async def check_and_publish_one(publish_callback: Callable, archetypes: Dict[str
                         last_deck = deck_info
                 except Exception:
                     continue
-        
         if last_deck and last_deck.get("format"):
-            last_published_format = last_deck.get("format")
-            print(f"[HSGuru] 🔍 ДИАГНОСТИКА: Вычислен last_published_format из последней колоды = '{last_published_format}'")
-            # Обновляем в seen_data для сохранения
+            last_published_format = last_deck["format"]
             seen_data["last_published_format"] = last_published_format
-    
-    print(f"[HSGuru] 🔍 ДИАГНОСТИКА ФИЛЬТРА: last_published_format = '{last_published_format}'")
-    
+            print(f"[HSGuru] Восстановлен last_published_format = '{last_published_format}'")
+
+    print(f"[HSGuru] last_published_format = '{last_published_format}'")
+
+    # --- Собираем все колоды, прошедшие фильтры ---
+    filtered_low_games = 0
+    filtered_duplicates = 0
+    filtered_wild = 0
+    candidate_decks = []
+
     for deck in decks:
         deck_code = deck["deck_code"]
-        
-        # Извлекаем карты колоды
+
+        # Извлекаем карты
         deck_cards = get_deck_cards_set(deck_code)
-        
         if not deck_cards:
             print(f"[HSGuru] ⚠ Не удалось извлечь карты из {deck_code[:20]}...")
             continue
-        
-        # Проверяем на дубликаты (по коду, картам и названию)
+
+        # Проверка на дубликат (по коду, картам и названию)
         if is_duplicate_deck(deck_code, deck_cards, seen_data, deck_name=deck.get("deck_name", "")):
+            filtered_duplicates += 1
             continue
-        
-        # Проверяем минимальное количество игр (минимум 20)
+
+        # Минимум игр
         wins_check = deck.get("wins", 0) or 0
         losses_check = deck.get("losses", 0) or 0
-        total_games = deck.get("total_games", 0)
-        # Если total_games не установлен, вычисляем из wins + losses
-        if total_games == 0:
-            total_games = wins_check + losses_check
-        
-        # ВАЖНО: Проверяем что есть статистика И она меньше минимума
+        total_games = deck.get("total_games", 0) or (wins_check + losses_check)
         if total_games < MIN_GAMES:
             filtered_low_games += 1
-            print(f"[HSGuru] ⚠ Пропущена колода '{deck['deck_name'][:30]}...' - мало игр ({total_games} < {MIN_GAMES})")
-            print(f"[HSGuru] DEBUG: wins={wins_check}, losses={losses_check}, win_loss_text='{deck.get('win_loss', '')}'")
+            print(f"[HSGuru] ⚠ Мало игр ({total_games} < {MIN_GAMES}): '{deck['deck_name'][:40]}'")
             continue
-        
-        # Проверяем фильтр для Вольных колод: не более одной подряд
+
         deck_format = deck.get("format", "")
         deck_mode_normalized = FORMAT_MAP.get(deck_format, deck_format)
-        
-        # ДЕТАЛЬНОЕ ЛОГИРОВАНИЕ для диагностики
-        print(f"[HSGuru] 🔍 ДИАГНОСТИКА ФИЛЬТРА для '{deck['deck_name'][:30]}...':")
-        print(f"    deck_format = '{deck_format}'")
-        print(f"    deck_mode_normalized = '{deck_mode_normalized}'")
-        print(f"    last_published_format = '{last_published_format}'")
-        print(f"    Проверка: deck_mode_normalized == 'Вольный' = {deck_mode_normalized == 'Вольный'}")
-        print(f"    Проверка: last_published_format == 'Вольный' = {last_published_format == 'Вольный'}")
-        
-        # Если колода Вольная и последняя опубликованная тоже Вольная - пропускаем
-        if deck_mode_normalized == "Вольный" and last_published_format == "Вольный":
-            filtered_wild_consecutive += 1
-            print(f"[HSGuru] ⚠ Пропущена колода '{deck['deck_name'][:30]}...' - Вольная колода подряд (последняя была тоже Вольная)")
-            continue
-        
-        # Колода прошла проверку
-        new_decks.append({
+
+        candidate_decks.append({
             **deck,
-            "cards": deck_cards,  # Сохраняем карты для последующего сохранения
-            "normalized_format": deck_mode_normalized  # Сохраняем нормализованный режим
+            "cards": deck_cards,
+            "normalized_format": deck_mode_normalized,
+            "total_games_calc": total_games,
         })
-    
-    print(f"[HSGuru] Новых уникальных колод (после проверки дубликатов и фильтрации): {len(new_decks)}")
-    if filtered_low_games > 0:
-        print(f"[HSGuru] Отфильтровано колод с <{MIN_GAMES} игр: {filtered_low_games}")
-    
-    if not new_decks:
-        print(f"[HSGuru] Все колоды уже опубликованы, являются дубликатами или имеют <{MIN_GAMES} игр")
-        return False
-    
-    # Берем первую подходящую колоду
-    deck = new_decks[0]
-    deck_code = deck["deck_code"]
-    
-    # ФИНАЛЬНАЯ ПРОВЕРКА перед публикацией
-    wins_check = deck.get("wins", 0) or 0
-    losses_check = deck.get("losses", 0) or 0
-    total_games_check = deck.get("total_games", 0)
-    # Если total_games не установлен, вычисляем из wins + losses
-    if total_games_check == 0:
-        total_games_check = wins_check + losses_check
-    
-    print(f"[HSGuru] ФИНАЛЬНАЯ ПРОВЕРКА перед публикацией:")
-    print(f"   Колода: {deck['deck_name'][:50]}...")
-    print(f"   Статистика: {wins_check}-{losses_check} (total_games={total_games_check})")
-    print(f"   Проверка: {total_games_check} < {MIN_GAMES} = {total_games_check < MIN_GAMES}")
-    
-    if total_games_check < MIN_GAMES:
-        print(f"[HSGuru] ❌ ОШИБКА: Колода имеет {total_games_check} игр < {MIN_GAMES} - НЕ ДОЛЖНА БЫТЬ ОПУБЛИКОВАНА!")
-        print(f"[HSGuru] Пропускаем публикацию этой колоды")
-        return False
-    
-    try:
-        print(f"[HSGuru] ✅ Публикуем: {deck['deck_name'][:50]}...")
-        print(f"[HSGuru] Стример: {deck['streamer']}, Формат: {deck['format']}")
-        
-        # Формируем payload со всей статистикой
+
+    print(
+        f"[HSGuru] Кандидатов: {len(candidate_decks)} | "
+        f"Дубликатов: {filtered_duplicates} | "
+        f"Мало игр: {filtered_low_games}"
+    )
+
+    if not candidate_decks:
+        return 0
+
+    # --- Публикуем все кандидаты, применяя wild-consecutive на лету ---
+    published_count = 0
+
+    for deck in candidate_decks:
+        deck_code = deck["deck_code"]
+        deck_mode_normalized = deck["normalized_format"]
+
+        # Wild-фильтр: не более одной Вольной колоды подряд
+        if deck_mode_normalized == "Вольный" and last_published_format == "Вольный":
+            filtered_wild += 1
+            print(f"[HSGuru] ⚠ Пропускаем Вольную подряд: '{deck['deck_name'][:40]}'")
+            continue
+
+        print(f"[HSGuru] ✅ Публикуем [{published_count + 1}]: '{deck['deck_name'][:50]}' ({deck['streamer']}, {deck['format']})")
+
         payload = {
             "deck_code": deck_code,
             "deck_name": deck["deck_name"],
             "streamer": deck["streamer"],
             "player": deck["streamer"],
             "format": deck["format"],
-            # Статистика
             "wins": deck.get("wins", 0),
             "losses": deck.get("losses", 0),
             "win_loss": deck.get("win_loss", ""),
-            "total_games": deck.get("total_games", 0),
-            # Ранги
+            "total_games": deck.get("total_games_calc", 0),
             "peak": deck.get("peak", ""),
             "latest": deck.get("latest", ""),
             "worst": deck.get("worst", ""),
-            # Дополнительно
             "last_played": deck.get("last_played", ""),
         }
-        
-        # Логируем статистику если есть
-        if deck.get("total_games", 0) > 0:
-            print(f"[HSGuru] Статистика: {deck['wins']} побед, {deck['losses']} поражений ({deck['total_games']} игр)")
-            if deck.get("peak") or deck.get("legend_rank"):
-                print(f"[HSGuru] Ранги: Peak={deck['peak']}, Latest={deck['latest']}, Worst={deck['worst']}, Legend={deck.get('legend_rank', '')}")
-        
-        result = await publish_callback(payload)
-        
+
+        try:
+            result = await publish_callback(payload)
+        except Exception as e:
+            print(f"[HSGuru] ✗ Ошибка публикации '{deck['deck_name'][:40]}': {e}")
+            import traceback
+            traceback.print_exc()
+            continue
+
         if result:
-            # Сохраняем в seen
+            # Обновляем seen_data сразу после каждой успешной публикации,
+            # чтобы следующие колоды в этом же батче видели актуальное состояние
             seen_data["codes"].add(deck_code)
-            deck_normalized_format = deck.get("normalized_format", "")
-            if not deck_normalized_format:
-                # Если нормализованный формат не был сохранен, вычисляем его
-                deck_format = deck.get("format", "")
-                deck_normalized_format = FORMAT_MAP.get(deck_format, deck_format)
-            
             seen_data["decks"][deck_code] = {
                 "cards": deck["cards"],
                 "published_at": datetime.now().isoformat(),
-                "format": deck_normalized_format,
-                "name": deck.get("deck_name", ""),  # Сохраняем название для проверки дубликатов
+                "format": deck_mode_normalized,
+                "name": deck.get("deck_name", ""),
             }
-            # Обновляем режим последней опубликованной колоды
-            seen_data["last_published_format"] = deck_normalized_format
+            seen_data["last_published_format"] = deck_mode_normalized
+            last_published_format = deck_mode_normalized  # Обновляем локальную переменную для wild-фильтра
             save_seen(seen_data)
-            
-            print(f"[HSGuru] ✓ Успешно опубликовано!")
-            print(f"[HSGuru] 🔍 ДИАГНОСТИКА: Обновлен last_published_format = '{deck_normalized_format}'")
-            return True
+
+            published_count += 1
+            print(f"[HSGuru] ✓ Опубликовано на сайт: '{deck['deck_name'][:50]}'")
         else:
-            print(f"[HSGuru] ✗ Ошибка публикации")
-            return False
-            
-    except Exception as e:
-        print(f"[HSGuru] ✗ Ошибка: {e}")
-        import traceback
-        traceback.print_exc()
-        return False
+            print(f"[HSGuru] ✗ Ошибка публикации: '{deck['deck_name'][:40]}'")
+
+    if filtered_wild > 0:
+        print(f"[HSGuru] Пропущено Вольных подряд: {filtered_wild}")
+
+    return published_count
+
+
+# Обратная совместимость: check_and_publish_one вызывает check_and_publish_all
+async def check_and_publish_one(publish_callback: Callable, archetypes: Dict[str, str]) -> bool:
+    count = await check_and_publish_all(publish_callback, archetypes)
+    return count > 0
