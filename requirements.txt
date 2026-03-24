@@ -1,0 +1,11 @@
+aiogram==3.13.1
+python-dotenv==1.0.0
+hearthstone
+Pillow==10.4.0
+fastapi==0.115.0
+uvicorn==0.30.6
+aiohttp==3.10.5
+beautifulsoup4==4.12.3
+cloudscraper
+
+

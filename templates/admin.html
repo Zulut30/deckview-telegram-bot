@@ -1,0 +1,1043 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DeckView Admin</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <style>
+    /* ── Reset & tokens ─────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #F7F8FA;
+      --surface:   #FFFFFF;
+      --border:    #E4E7EB;
+      --text:      #111827;
+      --muted:     #6B7280;
+      --accent:    #111827;
+      --accent-lt: #F3F4F6;
+      --green:     #16A34A;
+      --red:       #DC2626;
+      --blue:      #2563EB;
+      --shadow:    0 1px 3px rgba(0,0,0,.07), 0 1px 2px rgba(0,0,0,.04);
+      --radius:    10px;
+      --font:      -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, sans-serif;
+    }
+
+    body {
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+      font-size: 14px;
+      line-height: 1.55;
+    }
+
+    a { color: var(--blue); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    /* ── Layout ─────────────────────────────────────────── */
+    .shell { display: flex; min-height: 100vh; }
+
+    /* ── Sidebar ─────────────────────────────────────────── */
+    .sidebar {
+      width: 220px;
+      min-width: 220px;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      padding: 0;
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      overflow-y: auto;
+    }
+
+    .sidebar-logo {
+      padding: 20px 20px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+    .sidebar-logo .logo-name {
+      font-size: 15px;
+      font-weight: 700;
+      letter-spacing: -.3px;
+      color: var(--text);
+    }
+    .sidebar-logo .logo-sub {
+      font-size: 11px;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+
+    .sidebar-nav {
+      padding: 12px 8px;
+      flex: 1;
+    }
+    .nav-label {
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: var(--muted);
+      padding: 8px 12px 4px;
+    }
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      padding: 8px 12px;
+      border-radius: 7px;
+      cursor: pointer;
+      color: var(--muted);
+      font-size: 13.5px;
+      font-weight: 500;
+      transition: background .12s, color .12s;
+      user-select: none;
+    }
+    .nav-item:hover { background: var(--accent-lt); color: var(--text); }
+    .nav-item.active { background: var(--accent); color: #fff; }
+    .nav-item .icon { width: 16px; text-align: center; flex-shrink: 0; }
+
+    .sidebar-footer {
+      padding: 14px 20px;
+      border-top: 1px solid var(--border);
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    /* ── Main ───────────────────────────────────────────── */
+    .main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+
+    .topbar {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 14px 28px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    .topbar-title { font-size: 15px; font-weight: 600; }
+    .topbar-actions { display: flex; gap: 8px; align-items: center; }
+    .btn {
+      padding: 6px 14px;
+      border-radius: 7px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background .12s;
+    }
+    .btn:hover { background: var(--accent-lt); }
+    .btn-primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .btn-primary:hover { opacity: .88; background: var(--accent); }
+
+    .content {
+      padding: 28px;
+      flex: 1;
+    }
+
+    /* ── Pages ───────────────────────────────────────────── */
+    .page { display: none; }
+    .page.active { display: block; }
+
+    /* ── Stat cards ─────────────────────────────────────── */
+    .stat-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      gap: 14px;
+      margin-bottom: 28px;
+    }
+    .stat-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 18px 20px;
+      box-shadow: var(--shadow);
+    }
+    .stat-card .sc-label {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: .07em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+    .stat-card .sc-value {
+      font-size: 28px;
+      font-weight: 700;
+      color: var(--text);
+      line-height: 1;
+    }
+    .stat-card .sc-sub {
+      font-size: 11.5px;
+      color: var(--muted);
+      margin-top: 4px;
+    }
+    .stat-card.green .sc-value { color: var(--green); }
+    .stat-card.red .sc-value   { color: var(--red); }
+
+    /* ── Chart grid ─────────────────────────────────────── */
+    .chart-grid {
+      display: grid;
+      grid-template-columns: 2fr 1fr;
+      gap: 14px;
+      margin-bottom: 28px;
+    }
+    @media (max-width: 900px) { .chart-grid { grid-template-columns: 1fr; } }
+    .chart-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+      box-shadow: var(--shadow);
+    }
+    .chart-card h3 {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 16px;
+    }
+    .chart-card canvas { max-height: 220px; }
+
+    /* ── Section block ──────────────────────────────────── */
+    .section {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+      margin-bottom: 28px;
+    }
+    .section-header {
+      padding: 14px 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .section-header h3 { font-size: 13px; font-weight: 600; }
+
+    /* ── Toolbar ─────────────────────────────────────────── */
+    .toolbar {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .toolbar input, .toolbar select {
+      padding: 6px 10px;
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      background: var(--surface);
+      color: var(--text);
+      font-size: 13px;
+      outline: none;
+    }
+    .toolbar input:focus, .toolbar select:focus { border-color: #9CA3AF; }
+
+    /* ── Table ───────────────────────────────────────────── */
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    thead th {
+      padding: 10px 16px;
+      text-align: left;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+      color: var(--muted);
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+    }
+    tbody tr { transition: background .1s; }
+    tbody tr:hover { background: var(--accent-lt); }
+    tbody td {
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: middle;
+    }
+    tbody tr:last-child td { border-bottom: none; }
+
+    .badge {
+      display: inline-block;
+      padding: 2px 9px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: .03em;
+    }
+    .badge-neutral { background: #F3F4F6; color: #374151; }
+    .badge-blue    { background: #DBEAFE; color: #1D4ED8; }
+    .badge-green   { background: #DCFCE7; color: #15803D; }
+    .badge-amber   { background: #FEF9C3; color: #92400E; }
+    .badge-purple  { background: #EDE9FE; color: #6D28D9; }
+
+    .mono { font-family: 'SFMono-Regular', Consolas, monospace; font-size: 12px; color: var(--muted); }
+    .deck-code-cell { max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    /* ── Pagination ─────────────────────────────────────── */
+    .pagination {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px;
+      border-top: 1px solid var(--border);
+      font-size: 13px;
+      color: var(--muted);
+    }
+    .pagination-btns { display: flex; gap: 6px; }
+    .page-btn {
+      padding: 4px 10px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--surface);
+      cursor: pointer;
+      font-size: 13px;
+      color: var(--text);
+    }
+    .page-btn:hover:not(:disabled) { background: var(--accent-lt); }
+    .page-btn:disabled { opacity: .4; cursor: default; }
+    .page-btn.current { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+    /* ── DB Schema ──────────────────────────────────────── */
+    .schema-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 16px;
+    }
+    .schema-table {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+    .schema-table-header {
+      padding: 12px 16px;
+      background: var(--accent);
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .schema-table-header .tname { font-size: 13px; font-weight: 700; letter-spacing: -.1px; }
+    .schema-table-header .trows { font-size: 11px; opacity: .75; }
+    .schema-col {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 7px 16px;
+      border-bottom: 1px solid var(--border);
+      gap: 8px;
+    }
+    .schema-col:last-child { border-bottom: none; }
+    .schema-col .col-name {
+      font-size: 13px;
+      font-family: 'SFMono-Regular', Consolas, monospace;
+      font-weight: 500;
+    }
+    .schema-col .col-pk { color: #D97706; font-weight: 700; margin-right: 4px; }
+    .schema-col .col-type {
+      font-size: 11px;
+      color: var(--muted);
+      background: var(--accent-lt);
+      padding: 2px 7px;
+      border-radius: 4px;
+      font-family: 'SFMono-Regular', Consolas, monospace;
+      white-space: nowrap;
+    }
+    .schema-col .col-nn { font-size: 10px; color: var(--red); margin-left: 4px; }
+
+    /* ── Relations diagram ──────────────────────────────── */
+    .erd-wrap {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+      margin-bottom: 28px;
+      box-shadow: var(--shadow);
+      overflow-x: auto;
+    }
+    .erd-wrap h3 { font-size: 13px; font-weight: 600; margin-bottom: 20px; }
+    .erd { display: flex; gap: 36px; align-items: flex-start; flex-wrap: wrap; }
+    .erd-node {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+      min-width: 160px;
+    }
+    .erd-node-head {
+      background: #1F2937;
+      color: #fff;
+      padding: 8px 14px;
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .erd-node-col {
+      padding: 5px 14px;
+      font-size: 12px;
+      font-family: monospace;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      gap: 6px;
+      align-items: center;
+    }
+    .erd-node-col:last-child { border-bottom: none; }
+    .erd-node-col .epk { color: #D97706; font-size: 10px; }
+    .erd-node-col .efk { color: var(--blue); font-size: 10px; }
+    .erd-conn {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      color: var(--muted);
+      font-size: 22px;
+      line-height: 1;
+      align-self: center;
+    }
+    .erd-conn-label { font-size: 10px; color: var(--muted); text-align: center; letter-spacing: .05em; }
+
+    /* ── Top voted table ────────────────────────────────── */
+    .vote-bar {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+    }
+    .vote-like   { color: var(--green); font-weight: 600; }
+    .vote-dislike{ color: var(--red);   font-weight: 600; }
+
+    /* ── Empty state ─────────────────────────────────────── */
+    .empty {
+      padding: 40px;
+      text-align: center;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    /* ── Loading spinner ─────────────────────────────────── */
+    .spinner {
+      display: inline-block;
+      width: 18px; height: 18px;
+      border: 2px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin .6s linear infinite;
+      vertical-align: middle;
+      margin-right: 6px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Toast ───────────────────────────────────────────── */
+    #toast {
+      position: fixed;
+      bottom: 24px; right: 24px;
+      background: var(--text);
+      color: #fff;
+      padding: 10px 18px;
+      border-radius: 8px;
+      font-size: 13px;
+      box-shadow: 0 4px 12px rgba(0,0,0,.18);
+      opacity: 0;
+      transform: translateY(8px);
+      transition: opacity .2s, transform .2s;
+      pointer-events: none;
+      z-index: 999;
+    }
+    #toast.show { opacity: 1; transform: translateY(0); }
+
+    @media (max-width: 680px) {
+      .sidebar { display: none; }
+      .content { padding: 16px; }
+      .stat-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+  </style>
+</head>
+<body>
+<div class="shell">
+
+  <!-- ─── Sidebar ─────────────────────────────────── -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-name">DeckView</div>
+      <div class="logo-sub">Панель администратора</div>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="nav-label">Навигация</div>
+      <div class="nav-item active" data-page="overview" onclick="showPage('overview', this)">
+        <span class="icon">◈</span> Обзор
+      </div>
+      <div class="nav-item" data-page="decks" onclick="showPage('decks', this)">
+        <span class="icon">▤</span> История колод
+      </div>
+      <div class="nav-item" data-page="votes" onclick="showPage('votes', this)">
+        <span class="icon">◆</span> Голоса
+      </div>
+      <div class="nav-label">База данных</div>
+      <div class="nav-item" data-page="schema" onclick="showPage('schema', this)">
+        <span class="icon">⬡</span> Схема БД
+      </div>
+    </nav>
+    <div class="sidebar-footer">DeckView Bot Admin · 2025</div>
+  </aside>
+
+  <!-- ─── Main ─────────────────────────────────────── -->
+  <div class="main">
+    <div class="topbar">
+      <span class="topbar-title" id="topbar-title">Обзор</span>
+      <div class="topbar-actions">
+        <span id="topbar-status" style="color:var(--muted);font-size:12px;"></span>
+        <button class="btn" onclick="refreshCurrent()">↺ Обновить</button>
+      </div>
+    </div>
+
+    <div class="content">
+
+      <!-- ═══ PAGE: Overview ═════════════════════════ -->
+      <div id="page-overview" class="page active">
+
+        <div class="stat-grid" id="stat-grid">
+          <div class="stat-card">
+            <div class="sc-label">Всего колод</div>
+            <div class="sc-value" id="s-total">—</div>
+            <div class="sc-sub">в базе данных</div>
+          </div>
+          <div class="stat-card">
+            <div class="sc-label">Сегодня</div>
+            <div class="sc-value" id="s-today">—</div>
+            <div class="sc-sub">новых колод</div>
+          </div>
+          <div class="stat-card">
+            <div class="sc-label">За 7 дней</div>
+            <div class="sc-value" id="s-week">—</div>
+            <div class="sc-sub">новых колод</div>
+          </div>
+          <div class="stat-card green">
+            <div class="sc-label">Лайки</div>
+            <div class="sc-value" id="s-likes">—</div>
+            <div class="sc-sub">всего голосов ▲</div>
+          </div>
+          <div class="stat-card red">
+            <div class="sc-label">Дизлайки</div>
+            <div class="sc-value" id="s-dislikes">—</div>
+            <div class="sc-sub">всего голосов ▼</div>
+          </div>
+        </div>
+
+        <div class="chart-grid">
+          <div class="chart-card">
+            <h3>Активность — колоды по дням (30 дней)</h3>
+            <canvas id="chart-daily"></canvas>
+          </div>
+          <div class="chart-card">
+            <h3>Режимы игры</h3>
+            <canvas id="chart-modes"></canvas>
+          </div>
+        </div>
+
+        <div class="chart-grid" style="grid-template-columns:1fr;">
+          <div class="chart-card">
+            <h3>Распределение по стоимости (пыль)</h3>
+            <canvas id="chart-costs" style="max-height:160px;"></canvas>
+          </div>
+        </div>
+
+      </div><!-- /overview -->
+
+      <!-- ═══ PAGE: Decks ════════════════════════════ -->
+      <div id="page-decks" class="page">
+        <div class="section">
+          <div class="section-header">
+            <h3>История колод</h3>
+            <div class="toolbar">
+              <input id="deck-search" type="text" placeholder="Поиск по коду..." style="width:200px;" />
+              <select id="deck-mode-filter">
+                <option value="">Все режимы</option>
+                <option value="Стандарт">Стандарт</option>
+                <option value="Вольный">Вольный</option>
+                <option value="Классический">Классический</option>
+                <option value="Потасовка">Потасовка</option>
+              </select>
+              <select id="deck-sort">
+                <option value="created_at|desc">Дата ↓</option>
+                <option value="created_at|asc">Дата ↑</option>
+                <option value="dust_cost|desc">Стоимость ↓</option>
+                <option value="dust_cost|asc">Стоимость ↑</option>
+              </select>
+              <button class="btn btn-primary" onclick="loadDecks(1)">Найти</button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Код колоды</th>
+                  <th>Режим</th>
+                  <th>Стоимость (пыль)</th>
+                  <th>Добавлена</th>
+                </tr>
+              </thead>
+              <tbody id="deck-tbody">
+                <tr><td colspan="5" class="empty"><span class="spinner"></span>Загрузка...</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="pagination" id="deck-pagination" style="display:none;">
+            <span id="deck-page-info"></span>
+            <div class="pagination-btns" id="deck-page-btns"></div>
+          </div>
+        </div>
+      </div><!-- /decks -->
+
+      <!-- ═══ PAGE: Votes ════════════════════════════ -->
+      <div id="page-votes" class="page">
+        <div class="section">
+          <div class="section-header">
+            <h3>Топ по голосам</h3>
+            <span style="font-size:12px;color:var(--muted);">Рейтинг по количеству лайков</span>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Место</th>
+                  <th>Message ID</th>
+                  <th>Лайки</th>
+                  <th>Дизлайки</th>
+                  <th>Рейтинг</th>
+                </tr>
+              </thead>
+              <tbody id="votes-tbody">
+                <tr><td colspan="5" class="empty"><span class="spinner"></span>Загрузка...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div><!-- /votes -->
+
+      <!-- ═══ PAGE: Schema ═══════════════════════════ -->
+      <div id="page-schema" class="page">
+
+        <div class="erd-wrap">
+          <h3>Диаграмма связей (ERD)</h3>
+          <div class="erd">
+
+            <div class="erd-node">
+              <div class="erd-node-head">decks</div>
+              <div class="erd-node-col"><span class="epk">PK</span> id INTEGER</div>
+              <div class="erd-node-col">deck_code TEXT</div>
+              <div class="erd-node-col">created_at TIMESTAMP</div>
+              <div class="erd-node-col">mode TEXT</div>
+              <div class="erd-node-col">dust_cost INTEGER</div>
+            </div>
+
+            <div class="erd-conn">
+              <div style="font-size:13px;letter-spacing:.04em;color:var(--muted);">1 ──── ∞</div>
+              <div class="erd-conn-label">deck_id</div>
+            </div>
+
+            <div class="erd-node">
+              <div class="erd-node-head">deck_cards</div>
+              <div class="erd-node-col"><span class="efk">FK</span> deck_id INTEGER</div>
+              <div class="erd-node-col">card_dbf_id INTEGER</div>
+            </div>
+
+            <div style="width:60px;align-self:center;text-align:center;color:var(--muted);font-size:12px;">нет прямой связи</div>
+
+            <div class="erd-node">
+              <div class="erd-node-head">deck_votes</div>
+              <div class="erd-node-col"><span class="epk">PK</span> message_id INTEGER</div>
+              <div class="erd-node-col">like_count INTEGER</div>
+              <div class="erd-node-col">dislike_count INTEGER</div>
+            </div>
+
+            <div class="erd-conn">
+              <div style="font-size:13px;letter-spacing:.04em;color:var(--muted);">1 ──── ∞</div>
+              <div class="erd-conn-label">message_id</div>
+            </div>
+
+            <div class="erd-node">
+              <div class="erd-node-head">deck_user_votes</div>
+              <div class="erd-node-col"><span class="efk">FK</span> message_id INTEGER</div>
+              <div class="erd-node-col">user_id INTEGER</div>
+              <div class="erd-node-col">vote TEXT</div>
+            </div>
+
+          </div>
+        </div>
+
+        <div class="schema-grid" id="schema-grid">
+          <div style="color:var(--muted);font-size:13px;padding:12px;">
+            <span class="spinner"></span>Загрузка схемы...
+          </div>
+        </div>
+
+      </div><!-- /schema -->
+
+    </div><!-- /content -->
+  </div><!-- /main -->
+</div><!-- /shell -->
+
+<div id="toast"></div>
+
+<script>
+// ── Helpers ──────────────────────────────────────────────
+function $(id) { return document.getElementById(id); }
+
+function toast(msg, duration = 2500) {
+  const el = $('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(el._t);
+  el._t = setTimeout(() => el.classList.remove('show'), duration);
+}
+
+function fmtDate(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (isNaN(d)) return iso;
+  return d.toLocaleString('ru-RU', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' });
+}
+
+function fmtDust(n) {
+  if (n == null) return '—';
+  return Number(n).toLocaleString('ru-RU') + ' 💨';
+}
+
+function modeBadge(mode) {
+  if (!mode) return '<span class="badge badge-neutral">—</span>';
+  const map = {
+    'Стандарт':     'badge-blue',
+    'Standard':     'badge-blue',
+    'Вольный':      'badge-green',
+    'Wild':         'badge-green',
+    'Классический': 'badge-amber',
+    'Classic':      'badge-amber',
+    'Потасовка':    'badge-purple',
+    'Twist':        'badge-purple',
+  };
+  const cls = map[mode] || 'badge-neutral';
+  return `<span class="badge ${cls}">${mode}</span>`;
+}
+
+// ── Navigation ───────────────────────────────────────────
+let _currentPage = 'overview';
+const _pageLoaded = {};
+
+function showPage(name, el) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  $(`page-${name}`).classList.add('active');
+  el.classList.add('active');
+  $('topbar-title').textContent = el.textContent.trim();
+  _currentPage = name;
+  if (!_pageLoaded[name]) {
+    _pageLoaded[name] = true;
+    pageInit(name);
+  }
+}
+
+function refreshCurrent() {
+  _pageLoaded[_currentPage] = false;
+  pageInit(_currentPage);
+  toast('Данные обновлены');
+}
+
+function pageInit(name) {
+  if (name === 'overview') loadOverview();
+  if (name === 'decks')    loadDecks(1);
+  if (name === 'votes')    loadVotes();
+  if (name === 'schema')   loadSchema();
+}
+
+// ── API calls ────────────────────────────────────────────
+async function apiFetch(path) {
+  const r = await fetch(path);
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return r.json();
+}
+
+// ── Overview ─────────────────────────────────────────────
+let chartDaily = null, chartModes = null, chartCosts = null;
+
+async function loadOverview() {
+  $('topbar-status').innerHTML = '<span class="spinner"></span>';
+  try {
+    const [stats, daily, modes, costs] = await Promise.all([
+      apiFetch('/admin/stats'),
+      apiFetch('/admin/charts/daily?days=30'),
+      apiFetch('/admin/charts/modes'),
+      apiFetch('/admin/charts/costs'),
+    ]);
+
+    $('s-total').textContent    = stats.total_decks ?? '—';
+    $('s-today').textContent    = stats.today_decks ?? '—';
+    $('s-week').textContent     = stats.week_decks  ?? '—';
+    $('s-likes').textContent    = stats.total_likes ?? '—';
+    $('s-dislikes').textContent = stats.total_dislikes ?? '—';
+
+    renderDailyChart(daily);
+    renderModesChart(modes);
+    renderCostsChart(costs);
+
+    $('topbar-status').textContent = 'Обновлено ' + new Date().toLocaleTimeString('ru-RU');
+  } catch(e) {
+    $('topbar-status').textContent = '⚠ Ошибка загрузки';
+    console.error(e);
+  }
+}
+
+function renderDailyChart(data) {
+  const labels = data.map(d => d.day);
+  const values = data.map(d => d.count);
+  if (chartDaily) chartDaily.destroy();
+  chartDaily = new Chart($('chart-daily'), {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Колод',
+        data: values,
+        borderColor: '#111827',
+        backgroundColor: 'rgba(17,24,39,.07)',
+        fill: true,
+        tension: .3,
+        pointRadius: 3,
+        pointBackgroundColor: '#111827',
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        y: { beginAtZero: true, grid: { color: '#F3F4F6' }, ticks: { color: '#9CA3AF', precision: 0 } },
+        x: { grid: { display: false }, ticks: { color: '#9CA3AF', maxRotation: 40, font: { size: 11 } } }
+      }
+    }
+  });
+}
+
+function renderModesChart(data) {
+  const palette = ['#111827','#374151','#6B7280','#9CA3AF','#D1D5DB'];
+  if (chartModes) chartModes.destroy();
+  chartModes = new Chart($('chart-modes'), {
+    type: 'doughnut',
+    data: {
+      labels: data.map(d => d.mode),
+      datasets: [{
+        data: data.map(d => d.count),
+        backgroundColor: palette.slice(0, data.length),
+        borderWidth: 0,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'right', labels: { color: '#374151', font: { size: 12 }, boxWidth: 12, padding: 10 } }
+      }
+    }
+  });
+}
+
+function renderCostsChart(data) {
+  if (chartCosts) chartCosts.destroy();
+  chartCosts = new Chart($('chart-costs'), {
+    type: 'bar',
+    data: {
+      labels: data.map(d => d.bucket),
+      datasets: [{
+        label: 'Колод',
+        data: data.map(d => d.count),
+        backgroundColor: '#E5E7EB',
+        borderColor: '#9CA3AF',
+        borderWidth: 1,
+        borderRadius: 4,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        y: { beginAtZero: true, grid: { color: '#F3F4F6' }, ticks: { color: '#9CA3AF', precision: 0 } },
+        x: { grid: { display: false }, ticks: { color: '#9CA3AF', font: { size: 12 } } }
+      }
+    }
+  });
+}
+
+// ── Decks ─────────────────────────────────────────────────
+let _deckPage = 1;
+
+async function loadDecks(page) {
+  _deckPage = page || 1;
+  const search   = $('deck-search').value.trim();
+  const mode     = $('deck-mode-filter').value;
+  const sortRaw  = $('deck-sort').value;
+  const [sortBy, sortDir] = sortRaw.split('|');
+
+  let url = `/admin/decks?page=${_deckPage}&per_page=30&sort_by=${sortBy}&sort_dir=${sortDir}`;
+  if (mode)   url += `&mode=${encodeURIComponent(mode)}`;
+  if (search) url += `&search=${encodeURIComponent(search)}`;
+
+  $('deck-tbody').innerHTML = `<tr><td colspan="5" class="empty"><span class="spinner"></span>Загрузка...</td></tr>`;
+
+  try {
+    const data = await apiFetch(url);
+    renderDecks(data);
+  } catch(e) {
+    $('deck-tbody').innerHTML = `<tr><td colspan="5" class="empty">Ошибка загрузки данных</td></tr>`;
+    console.error(e);
+  }
+}
+
+function renderDecks(data) {
+  const tbody = $('deck-tbody');
+  const pagination = $('deck-pagination');
+
+  if (!data.items || data.items.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="5" class="empty">Колоды не найдены</td></tr>`;
+    pagination.style.display = 'none';
+    return;
+  }
+
+  const offset = (data.page - 1) * data.per_page;
+  tbody.innerHTML = data.items.map((d, i) => `
+    <tr>
+      <td style="color:var(--muted);font-size:12px;">${offset + i + 1}</td>
+      <td class="deck-code-cell mono" title="${d.deck_code}">${d.deck_code}</td>
+      <td>${modeBadge(d.mode)}</td>
+      <td style="font-weight:600;">${fmtDust(d.dust_cost)}</td>
+      <td style="color:var(--muted);font-size:12px;">${fmtDate(d.created_at)}</td>
+    </tr>
+  `).join('');
+
+  // pagination
+  pagination.style.display = 'flex';
+  $('deck-page-info').textContent = `Страница ${data.page} из ${data.pages} · ${data.total} записей`;
+
+  const btns = $('deck-page-btns');
+  btns.innerHTML = '';
+  const addBtn = (label, page, active, disabled) => {
+    const b = document.createElement('button');
+    b.className = 'page-btn' + (active ? ' current' : '');
+    b.textContent = label;
+    b.disabled = disabled;
+    b.onclick = () => loadDecks(page);
+    btns.appendChild(b);
+  };
+
+  addBtn('‹ Пред', data.page - 1, false, data.page <= 1);
+
+  const start = Math.max(1, data.page - 2);
+  const end   = Math.min(data.pages, start + 4);
+  for (let p = start; p <= end; p++) {
+    addBtn(p, p, p === data.page, false);
+  }
+
+  addBtn('След ›', data.page + 1, false, data.page >= data.pages);
+}
+
+// ── Votes ─────────────────────────────────────────────────
+async function loadVotes() {
+  try {
+    const data = await apiFetch('/admin/stats');
+    const top = data.top_voted || [];
+    const tbody = $('votes-tbody');
+
+    if (!top.length) {
+      tbody.innerHTML = `<tr><td colspan="5" class="empty">Нет данных о голосах</td></tr>`;
+      return;
+    }
+
+    tbody.innerHTML = top.map((v, i) => {
+      const total = (v.likes || 0) + (v.dislikes || 0);
+      const pct = total ? Math.round((v.likes / total) * 100) : 0;
+      const bar = `
+        <div class="vote-bar">
+          <span class="vote-like">▲ ${v.likes}</span>
+          <span class="vote-dislike">▼ ${v.dislikes}</span>
+          <div style="flex:1;background:var(--border);border-radius:4px;height:6px;overflow:hidden;">
+            <div style="width:${pct}%;background:var(--green);height:100%;"></div>
+          </div>
+          <span style="font-size:11px;color:var(--muted);">${pct}%</span>
+        </div>`;
+      return `<tr>
+        <td style="font-weight:700;color:var(--muted);">#${i+1}</td>
+        <td class="mono">${v.message_id}</td>
+        <td style="color:var(--green);font-weight:700;">▲ ${v.likes}</td>
+        <td style="color:var(--red);font-weight:700;">▼ ${v.dislikes}</td>
+        <td style="min-width:200px;">${bar}</td>
+      </tr>`;
+    }).join('');
+  } catch(e) {
+    $('votes-tbody').innerHTML = `<tr><td colspan="5" class="empty">Ошибка загрузки</td></tr>`;
+    console.error(e);
+  }
+}
+
+// ── Schema ─────────────────────────────────────────────────
+async function loadSchema() {
+  try {
+    const tables = await apiFetch('/admin/schema');
+    const grid = $('schema-grid');
+
+    if (!tables.length) {
+      grid.innerHTML = '<div class="empty">Таблицы не найдены</div>';
+      return;
+    }
+
+    grid.innerHTML = tables.map(t => {
+      const cols = t.columns.map(c => `
+        <div class="schema-col">
+          <span class="col-name">
+            ${c.pk ? '<span class="col-pk">PK</span>' : ''}
+            ${c.name}
+            ${c.notnull && !c.pk ? '<span class="col-nn">NN</span>' : ''}
+          </span>
+          <span class="col-type">${c.type || 'ANY'}</span>
+        </div>
+      `).join('');
+
+      return `
+        <div class="schema-table">
+          <div class="schema-table-header">
+            <span class="tname">${t.table}</span>
+            <span class="trows">${t.row_count.toLocaleString('ru-RU')} строк</span>
+          </div>
+          ${cols}
+        </div>
+      `;
+    }).join('');
+  } catch(e) {
+    $('schema-grid').innerHTML = '<div class="empty">Ошибка загрузки схемы</div>';
+    console.error(e);
+  }
+}
+
+// ── Init ──────────────────────────────────────────────────
+_pageLoaded['overview'] = true;
+loadOverview();
+
+// Search on Enter
+$('deck-search').addEventListener('keydown', e => {
+  if (e.key === 'Enter') loadDecks(1);
+});
+</script>
+</body>
+</html>

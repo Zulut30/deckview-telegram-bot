@@ -1,0 +1,45 @@
+# Секреты и конфигурация
+.env
+.env.local
+
+# База данных
+*.db
+*.sqlite
+*.sqlite3
+
+# Кэш и данные рантайма
+cache/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pycache
+
+# Виртуальное окружение
+venv/
+.venv/
+env/
+
+# Изображения карт (большой объём — поставлять отдельно)
+cards/
+cards_images/
+
+# Данные карт (большие файлы — скачивать через update_cards.py)
+cards.json
+cardsRU.json
+
+# Логи
+*.log
+
+# Временные файлы
+*.tmp
+tmp_decks/
+
+# Экспорт
+exported_decks/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
