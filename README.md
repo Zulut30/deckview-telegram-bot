@@ -22,6 +22,7 @@
 - 🤖 **Telegram-бот** — авто-распознавание кодов в чатах и личных сообщениях
 - 🌐 **HTTP API** — публичные endpoints для рендера и метаданных (Swagger UI из коробки)
 - 🔌 **WordPress-совместимость** — CORS, прямая публикация постов через REST API, готовые сниппеты для шорткодов
+- 🌍 **Кросс-платформа** — готовые клиенты для Python, JavaScript/TypeScript, PHP, Go, Ruby, C#, Rust, cURL и shell
 - 📰 **Автопостинг с HSGuru** — колоды стримеров публикуются на WordPress-сайт и в канал
 - 🌍 **Перевод архетипов** — встроенная таблица EN → RU для названий колод
 - 🛡 **Защита от дубликатов** — проверка по коду, схожести карт (Jaccard ≥ 90%) и названию
@@ -42,6 +43,7 @@
 - [Структура проекта](#структура-проекта)
 - [Команды бота](#команды-бота)
 - [Правила публикации колод](#правила-публикации-колод)
+- [Клиенты на разных языках](#-клиенты-на-разных-языках)
 - [Интеграция с WordPress](#-интеграция-с-wordpress)
 - [Диагностика](#-диагностика)
 - [Лицензия](#лицензия)
@@ -517,6 +519,344 @@ sudo systemctl status deckview-bot deckview-api
 ```bash
 python update_cards.py
 ```
+
+---
+
+## 🌍 Клиенты на разных языках
+
+API — это обычный HTTP/JSON, поэтому работает из **любого современного языка и фреймворка**. Ниже — готовые сниппеты для самых популярных. Везде используется тот же тестовый код колоды; замените `https://api.example.com` на адрес вашего сервера.
+
+<details>
+<summary><b>🐍 Python (requests / httpx)</b></summary>
+
+```python
+import requests
+
+DECK = "AAECAa0GBsubBOWwBIWfBYGhBaChBbyhBQyY6wOtigSJowSktgShtgSHtwTbuQT++QT9+wSUoQX9ogW8owUA"
+BASE = "https://api.example.com"
+
+# Получить метаданные
+meta = requests.get(f"{BASE}/public/meta", params={"deck": DECK}, timeout=15).json()
+print(meta["deck_class"], meta["dust_cost"])
+
+# Сохранить PNG
+img = requests.get(f"{BASE}/public/render", params={"deck": DECK}, timeout=30)
+img.raise_for_status()
+open("deck.png", "wb").write(img.content)
+```
+
+Асинхронно через `httpx`:
+
+```python
+import httpx, asyncio
+
+async def fetch():
+    async with httpx.AsyncClient(base_url="https://api.example.com", timeout=15) as c:
+        r = await c.get("/public/meta", params={"deck": DECK})
+        return r.json()
+
+print(asyncio.run(fetch()))
+```
+</details>
+
+<details>
+<summary><b>🟨 JavaScript (браузер / Node.js fetch)</b></summary>
+
+```javascript
+const BASE = "https://api.example.com";
+const DECK = "AAECAa0GBsubBOWwBIWfBYGhBaChBbyhBQyY6wOtigSJowSktgShtgSHtwTbuQT++QT9+wSUoQX9ogW8owUA";
+
+// Метаданные
+const meta = await fetch(`${BASE}/public/meta?deck=${encodeURIComponent(DECK)}`).then(r => r.json());
+console.log(meta.deck_class, meta.dust_cost);
+
+// Изображение
+const blob = await fetch(`${BASE}/public/render?deck=${encodeURIComponent(DECK)}`).then(r => r.blob());
+document.querySelector("#deck").src = URL.createObjectURL(blob);
+```
+
+В Node.js 18+ `fetch` работает из коробки. Для CommonJS:
+
+```javascript
+const res = await fetch(`${BASE}/public/meta?deck=${encodeURIComponent(DECK)}`);
+if (!res.ok) throw new Error(`HTTP ${res.status}`);
+console.log(await res.json());
+```
+</details>
+
+<details>
+<summary><b>🟦 TypeScript (с типами)</b></summary>
+
+```typescript
+interface DeckCard {
+  dbf_id: number;
+  name: string;
+  name_ru: string;
+  cost: number;
+  count: number;
+  rarity: string;
+}
+
+interface DeckMeta {
+  deck_class: string;
+  deck_format: string;
+  dust_cost: number;
+  card_count: number;
+  cards: DeckCard[];
+}
+
+async function getDeckMeta(deckCode: string): Promise<DeckMeta> {
+  const res = await fetch(`https://api.example.com/public/meta?deck=${encodeURIComponent(deckCode)}`);
+  if (!res.ok) throw new Error(`API error: ${res.status}`);
+  return res.json() as Promise<DeckMeta>;
+}
+```
+</details>
+
+<details>
+<summary><b>🐘 PHP (нативный + Guzzle + Laravel)</b></summary>
+
+```php
+<?php
+$deck = "AAECAa0GBsubBOWwBIWfBYGhBaChBbyhBQyY6wOtigSJowSktgShtgSHtwTbuQT++QT9+wSUoQX9ogW8owUA";
+$base = "https://api.example.com";
+
+// Метаданные через file_get_contents
+$meta = json_decode(file_get_contents("$base/public/meta?deck=" . urlencode($deck)), true);
+echo $meta['deck_class'], ' / Пыль: ', $meta['dust_cost'];
+
+// PNG через cURL
+$ch = curl_init("$base/public/render?deck=" . urlencode($deck));
+curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => 1, CURLOPT_TIMEOUT => 30]);
+file_put_contents("deck.png", curl_exec($ch));
+curl_close($ch);
+```
+
+Через **Guzzle**:
+
+```php
+use GuzzleHttp\Client;
+
+$client = new Client(['base_uri' => 'https://api.example.com', 'timeout' => 15]);
+$meta   = json_decode($client->get('/public/meta', ['query' => ['deck' => $deck]])->getBody(), true);
+```
+
+Через **Laravel HTTP**:
+
+```php
+use Illuminate\Support\Facades\Http;
+
+$meta = Http::timeout(15)->get('https://api.example.com/public/meta', ['deck' => $deck])->json();
+```
+</details>
+
+<details>
+<summary><b>🐹 Go</b></summary>
+
+```go
+package main
+
+import (
+    "encoding/json"
+    "fmt"
+    "io"
+    "net/http"
+    "net/url"
+    "os"
+)
+
+type DeckMeta struct {
+    DeckClass  string `json:"deck_class"`
+    DeckFormat string `json:"deck_format"`
+    DustCost   int    `json:"dust_cost"`
+    CardCount  int    `json:"card_count"`
+}
+
+func main() {
+    deck := "AAECAa0GBsubBOWwBIWfBYGhBaChBbyhBQyY6wOtigSJowSktgShtgSHtwTbuQT++QT9+wSUoQX9ogW8owUA"
+    base := "https://api.example.com"
+
+    // Метаданные
+    resp, err := http.Get(base + "/public/meta?deck=" + url.QueryEscape(deck))
+    if err != nil { panic(err) }
+    defer resp.Body.Close()
+
+    var meta DeckMeta
+    json.NewDecoder(resp.Body).Decode(&meta)
+    fmt.Printf("%s / %d пыли\n", meta.DeckClass, meta.DustCost)
+
+    // PNG
+    img, _ := http.Get(base + "/public/render?deck=" + url.QueryEscape(deck))
+    defer img.Body.Close()
+    out, _ := os.Create("deck.png")
+    io.Copy(out, img.Body)
+    out.Close()
+}
+```
+</details>
+
+<details>
+<summary><b>💎 Ruby</b></summary>
+
+```ruby
+require 'net/http'
+require 'json'
+require 'uri'
+
+deck = "AAECAa0GBsubBOWwBIWfBYGhBaChBbyhBQyY6wOtigSJowSktgShtgSHtwTbuQT++QT9+wSUoQX9ogW8owUA"
+
+# Метаданные
+uri  = URI("https://api.example.com/public/meta?deck=#{URI.encode_www_form_component(deck)}")
+meta = JSON.parse(Net::HTTP.get(uri))
+puts "#{meta['deck_class']} / #{meta['dust_cost']} пыли"
+
+# PNG
+img = Net::HTTP.get(URI("https://api.example.com/public/render?deck=#{URI.encode_www_form_component(deck)}"))
+File.binwrite("deck.png", img)
+```
+</details>
+
+<details>
+<summary><b>🟣 C# / .NET</b></summary>
+
+```csharp
+using System.Net.Http;
+using System.Text.Json;
+
+var deck = "AAECAa0GBsubBOWwBIWfBYGhBaChBbyhBQyY6wOtigSJowSktgShtgSHtwTbuQT++QT9+wSUoQX9ogW8owUA";
+using var http = new HttpClient { BaseAddress = new Uri("https://api.example.com") };
+
+// Метаданные
+using var meta = await http.GetStreamAsync($"/public/meta?deck={Uri.EscapeDataString(deck)}");
+using var doc  = await JsonDocument.ParseAsync(meta);
+Console.WriteLine(doc.RootElement.GetProperty("deck_class").GetString());
+
+// PNG
+var png = await http.GetByteArrayAsync($"/public/render?deck={Uri.EscapeDataString(deck)}");
+await File.WriteAllBytesAsync("deck.png", png);
+```
+</details>
+
+<details>
+<summary><b>🦀 Rust (reqwest)</b></summary>
+
+```rust
+use serde::Deserialize;
+
+#[derive(Deserialize)]
+struct DeckMeta {
+    deck_class: String,
+    dust_cost: u32,
+}
+
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    let deck = "AAECAa0GBsubBOWwBIWfBYGhBaChBbyhBQyY6wOtigSJowSktgShtgSHtwTbuQT++QT9+wSUoQX9ogW8owUA";
+    let client = reqwest::Client::new();
+
+    let meta: DeckMeta = client
+        .get("https://api.example.com/public/meta")
+        .query(&[("deck", deck)])
+        .send().await?
+        .json().await?;
+    println!("{} / {} пыли", meta.deck_class, meta.dust_cost);
+
+    let png = client
+        .get("https://api.example.com/public/render")
+        .query(&[("deck", deck)])
+        .send().await?
+        .bytes().await?;
+    std::fs::write("deck.png", &png)?;
+    Ok(())
+}
+```
+</details>
+
+<details>
+<summary><b>☕ Java (HttpClient)</b></summary>
+
+```java
+import java.net.URI;
+import java.net.http.*;
+import java.nio.file.*;
+
+var deck = URLEncoder.encode("AAECAa0GBsubBOWwBI...", java.nio.charset.StandardCharsets.UTF_8);
+var http = HttpClient.newHttpClient();
+
+// Метаданные
+var meta = http.send(
+    HttpRequest.newBuilder(URI.create("https://api.example.com/public/meta?deck=" + deck)).build(),
+    HttpResponse.BodyHandlers.ofString()
+).body();
+System.out.println(meta);
+
+// PNG
+http.send(
+    HttpRequest.newBuilder(URI.create("https://api.example.com/public/render?deck=" + deck)).build(),
+    HttpResponse.BodyHandlers.ofFile(Path.of("deck.png"))
+);
+```
+</details>
+
+<details>
+<summary><b>🐚 cURL / Bash</b></summary>
+
+```bash
+DECK="AAECAa0GBsubBOWwBIWfBYGhBaChBbyhBQyY6wOtigSJowSktgShtgSHtwTbuQT++QT9+wSUoQX9ogW8owUA"
+BASE="https://api.example.com"
+
+# Метаданные → красивый JSON через jq
+curl -sS "$BASE/public/meta?deck=$(printf %s "$DECK" | jq -sRr @uri)" | jq .
+
+# Сохранить PNG
+curl -sS "$BASE/public/render?deck=$(printf %s "$DECK" | jq -sRr @uri)" -o deck.png
+```
+</details>
+
+<details>
+<summary><b>⚡ Frameworks (React, Vue, Svelte, Next.js)</b></summary>
+
+**React (hook):**
+```jsx
+import { useEffect, useState } from 'react';
+
+export function useDeckMeta(deckCode) {
+  const [meta, setMeta] = useState(null);
+  useEffect(() => {
+    if (!deckCode) return;
+    fetch(`https://api.example.com/public/meta?deck=${encodeURIComponent(deckCode)}`)
+      .then(r => r.json()).then(setMeta);
+  }, [deckCode]);
+  return meta;
+}
+```
+
+**Vue 3 Composition API:**
+```vue
+<script setup>
+import { ref, watchEffect } from 'vue';
+const props = defineProps(['code']);
+const meta = ref(null);
+watchEffect(async () => {
+  if (!props.code) return;
+  meta.value = await fetch(`https://api.example.com/public/meta?deck=${encodeURIComponent(props.code)}`).then(r => r.json());
+});
+</script>
+```
+
+**Next.js Server Component:**
+```jsx
+export default async function DeckCard({ code }) {
+  const meta = await fetch(
+    `https://api.example.com/public/meta?deck=${encodeURIComponent(code)}`,
+    { next: { revalidate: 3600 } }
+  ).then(r => r.json());
+  return <p>{meta.deck_class} — {meta.dust_cost} пыли</p>;
+}
+```
+</details>
+
+> 💡 **Совет:** для production-приложений всегда указывайте `timeout` и кэшируйте ответы. Эндпоинты `/public/meta` и `/public/render` дают одинаковый результат на одинаковый код колоды — отлично подходят для CDN-кэширования (Cache-Control: public, max-age=86400).
 
 ---
 
