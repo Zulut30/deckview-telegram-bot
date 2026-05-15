@@ -21,6 +21,7 @@
 - 🖼 **Генерация изображений колод** — высококачественный рендер по коду колоды Hearthstone
 - 🤖 **Telegram-бот** — авто-распознавание кодов в чатах и личных сообщениях
 - 🌐 **HTTP API** — публичные endpoints для рендера и метаданных (Swagger UI из коробки)
+- 🔌 **WordPress-совместимость** — CORS, прямая публикация постов через REST API, готовые сниппеты для шорткодов
 - 📰 **Автопостинг с HSGuru** — колоды стримеров публикуются на WordPress-сайт и в канал
 - 🌍 **Перевод архетипов** — встроенная таблица EN → RU для названий колод
 - 🛡 **Защита от дубликатов** — проверка по коду, схожести карт (Jaccard ≥ 90%) и названию
@@ -41,6 +42,8 @@
 - [Структура проекта](#структура-проекта)
 - [Команды бота](#команды-бота)
 - [Правила публикации колод](#правила-публикации-колод)
+- [Интеграция с WordPress](#-интеграция-с-wordpress)
+- [Диагностика](#-диагностика)
 - [Лицензия](#лицензия)
 
 ---
@@ -517,6 +520,106 @@ python update_cards.py
 
 ---
 
+## 🔌 Интеграция с WordPress
+
+API совместим с любыми WordPress-плагинами, дёргающими внешние REST-сервисы из браузера: **WPGetAPI**, **WP Webhooks**, **JetEngine REST Listing**, **Bricks Builder Query Loop**, **Elementor Dynamic Tags**, **Custom JS/HTML widgets** и т.д.
+
+### CORS
+
+В корне приложения настроен `CORSMiddleware`. Управляется через `.env`:
+
+```env
+# Разрешить всем (по умолчанию, удобно для публичного API)
+CORS_ALLOW_ORIGINS=*
+
+# Или ограничить конкретными доменами WP-сайта
+CORS_ALLOW_ORIGINS=https://hs-manacost.ru,https://www.hs-manacost.ru
+```
+
+Разрешённые методы: `GET`, `POST`, `OPTIONS`. Заголовки `Content-Type`, `X-API-Key`, `Authorization` пропускаются. Preflight-кэш на 1 час.
+
+### Вариант 1 — вставка изображения колоды через шорткод
+
+Добавьте в `functions.php` темы:
+
+```php
+function manacost_deck_shortcode($atts) {
+    $atts = shortcode_atts(['deck' => '', 'alt' => 'Hearthstone deck'], $atts);
+    if (empty($atts['deck'])) return '';
+    $url = 'https://api.example.com/public/render?deck=' . urlencode($atts['deck']);
+    return sprintf(
+        '<img src="%s" alt="%s" loading="lazy" style="max-width:100%%;height:auto" />',
+        esc_url($url),
+        esc_attr($atts['alt'])
+    );
+}
+add_shortcode('hs_deck', 'manacost_deck_shortcode');
+```
+
+Использование в любом редакторе:
+
+```
+[hs_deck deck="AAECAa0GBsubBOWwBI..." alt="Контроль Воин"]
+```
+
+### Вариант 2 — REST-прокси на стороне WordPress
+
+Чтобы клиент стучался в свой же домен (никаких CORS-проблем даже у самых старых браузеров):
+
+```php
+add_action('rest_api_init', function () {
+    register_rest_route('manacost/v1', '/deck/(?P<code>[A-Za-z0-9+/=]+)', [
+        'methods'  => 'GET',
+        'callback' => function ($req) {
+            $code = $req['code'];
+            $resp = wp_remote_get("https://api.example.com/public/meta?deck=" . rawurlencode($code), ['timeout' => 15]);
+            if (is_wp_error($resp)) return new WP_Error('upstream', $resp->get_error_message(), ['status' => 502]);
+            return new WP_REST_Response(json_decode(wp_remote_retrieve_body($resp), true), wp_remote_retrieve_response_code($resp));
+        },
+        'permission_callback' => '__return_true',
+    ]);
+});
+```
+
+После активации: `GET /wp-json/manacost/v1/deck/AAECAa0G...`
+
+### Вариант 3 — клиентский JS (Elementor / Bricks / любой HTML-блок)
+
+```html
+<div id="deck-meta"></div>
+<script>
+(async () => {
+  const code = "AAECAa0GBsubBOWwBIWfBYGhBaChBbyhBQyY6wOtigSJowSktgShtgSHtwTbuQT++QT9+wSUoQX9ogW8owUA";
+  const res  = await fetch(`https://api.example.com/public/meta?deck=${encodeURIComponent(code)}`);
+  if (!res.ok) return;
+  const meta = await res.json();
+  document.getElementById('deck-meta').innerHTML = `
+    <p>Класс: <b>${meta.deck_class}</b></p>
+    <p>Формат: <b>${meta.deck_format}</b></p>
+    <p>Пыль: <b>${meta.dust_cost}</b></p>`;
+})();
+</script>
+```
+
+### Вариант 4 — конфигурация WPGetAPI
+
+| Поле | Значение |
+|------|----------|
+| API URL | `https://api.example.com` |
+| Endpoint | `/public/meta` |
+| Method | `GET` |
+| Query parameter | `deck` = `{{shortcode_arg:deck}}` |
+| Headers | (не нужны) |
+| Output | `[wpgetapi_endpoint api_id="manacost" endpoint_id="meta" debug="0"]` |
+
+> ⚠️ Если API закрыт API-ключом — добавьте header `X-API-Key: <ваш ключ>` в настройках плагина. CORS уже разрешает этот заголовок.
+
+### Автопубликация постов в WordPress
+
+Бот сам умеет создавать посты с колодами через WP REST API. Включается переменными `WP_BASE_URL`, `WP_USER`, `WP_APP_PASSWORD` в `.env` — см. [Установка и настройка](#установка-и-настройка). Application Password создаётся в админке WP: *Профиль → Application Passwords*.
+
+---
+
 ## 🩺 Диагностика
 
 | Симптом | Что проверить |
@@ -526,6 +629,8 @@ python update_cards.py
 | `/public/render` возвращает 400 на валидный код | Не загружена база карт. Запустите `python update_cards.py` или включите Blizzard API |
 | Логи замусорены `binascii.Error` traceback'ами | Ожидаемо при невалидных кодах от пользователей — API всё равно отдаёт корректный 400 |
 | Порт 8000 занят | `uvicorn api:app --port 8001` или `lsof -i:8000` чтобы найти процесс |
+| WP-плагин получает `CORS error` в консоли | Проверьте `CORS_ALLOW_ORIGINS` в `.env` — домен сайта должен быть в списке (или `*`). Не забудьте перезапустить `uvicorn` после правки `.env` |
+| Preflight (OPTIONS) возвращает 405 | Старая версия `api.py` без `CORSMiddleware` — обновите репозиторий до последнего коммита |
 
 ---
 

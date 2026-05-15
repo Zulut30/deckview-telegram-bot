@@ -10,10 +10,12 @@ HTTP API для генерации изображений колод и пане
 """
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import List
 
 from fastapi import FastAPI, HTTPException, Response, Header, Query
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
@@ -30,6 +32,29 @@ app = FastAPI(
         "**Публичные endpoints** (префикс `/public/`) не требуют авторизации.\n"
         "**Приватные endpoints** требуют заголовок `X-API-Key` (если задан `API_KEY`)."
     ),
+)
+
+# ---------------------------------------------------------------------------
+# CORS — нужно для вызова API из браузерных WordPress-плагинов и фронтенда.
+# Список разрешённых origin'ов задаётся через .env (CORS_ALLOW_ORIGINS),
+# по умолчанию разрешаем всем (`*`) для публичных endpoints.
+# ---------------------------------------------------------------------------
+_cors_env = os.getenv("CORS_ALLOW_ORIGINS", "*").strip()
+if _cors_env == "*":
+    _cors_origins: List[str] = ["*"]
+    _cors_allow_credentials = False  # с "*" нельзя credentials по спецификации
+else:
+    _cors_origins = [o.strip() for o in _cors_env.split(",") if o.strip()]
+    _cors_allow_credentials = True
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_cors_origins,
+    allow_credentials=_cors_allow_credentials,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["*", "X-API-Key", "Content-Type", "Authorization"],
+    expose_headers=["Content-Type", "Content-Length", "X-Deck-Class", "X-Deck-Format"],
+    max_age=3600,
 )
 
 _db = DeckDatabase()
