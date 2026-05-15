@@ -7,15 +7,13 @@ from pathlib import Path
 from typing import List, Tuple, Optional, Dict
 from PIL import Image, ImageDraw, ImageFont, ImageFilter, ImageEnhance
 import math
-import pkg_resources
+from importlib.metadata import version as _pkg_version, PackageNotFoundError
 import config
 from loader import CardDatabase, card_name_to_ids
 
-# DEBUGGING: Проверка версии библиотеки hearthstone
 try:
-    version = pkg_resources.get_distribution("hearthstone").version
-    print(f"DEBUG: INSTALLED HEARTHSTONE LIB VERSION: {version}")
-except:
+    print(f"DEBUG: INSTALLED HEARTHSTONE LIB VERSION: {_pkg_version('hearthstone')}")
+except PackageNotFoundError:
     print("DEBUG: Could not detect library version.")
 
 

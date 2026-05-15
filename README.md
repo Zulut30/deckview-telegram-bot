@@ -319,9 +319,10 @@ console.log(result.changed);    // true
 
 ### Требования
 
-- Python 3.10+
+- **Python 3.10–3.13** (протестировано на 3.13)
 - Изображения карт Hearthstone (папка `cards/`, файлы вида `SW_001.png`)
-- `cards.json` от [HearthstoneJSON](https://hearthstonejson.com/) (если не используется Blizzard API)
+- `cards.json` от [HearthstoneJSON](https://hearthstonejson.com/) — либо включённый Blizzard API
+- Свободный порт `8000` (для HTTP API) и/или интернет (для Telegram-бота)
 
 ### 1. Клонирование репозитория
 
@@ -332,9 +333,16 @@ cd deckview-telegram-bot
 
 ### 2. Установка зависимостей
 
+Рекомендуется использовать виртуальное окружение:
+
 ```bash
+python3 -m venv venv
+source venv/bin/activate      # Windows: venv\Scripts\activate
+pip install --upgrade pip
 pip install -r requirements.txt
 ```
+
+> 💡 На Python 3.13 убедитесь, что у вас установлен `setuptools` (`pip install setuptools`) — некоторые зависимости его требуют.
 
 ### 3. Настройка окружения
 
@@ -390,7 +398,7 @@ BLIZZARD_CACHE_TTL_HOURS=24
 
 ## Запуск
 
-### Запуск бота
+### Запуск Telegram-бота
 
 ```bash
 python bot.py
@@ -402,9 +410,61 @@ python bot.py
 uvicorn api:app --host 0.0.0.0 --port 8000
 ```
 
-### Запуск с помощью systemd (production)
+После запуска проверьте, что всё поднялось:
 
-Создайте `/etc/systemd/system/deckview-bot.service`:
+```bash
+curl http://localhost:8000/public/archetypes | head -c 200
+# должен прийти JSON-массив с парами {"eng": ..., "rus": ...}
+```
+
+Интерактивная документация Swagger UI будет доступна на `http://localhost:8000/docs`,
+ReDoc — на `http://localhost:8000/redoc`.
+
+### Быстрая проверка API (smoke test)
+
+```bash
+# 1. Документация открывается
+curl -sf http://localhost:8000/docs > /dev/null && echo "✓ docs OK"
+
+# 2. JSON-эндпоинт работает
+curl -sf http://localhost:8000/public/archetypes > /dev/null && echo "✓ archetypes OK"
+
+# 3. Невалидный код колоды → 400
+curl -s -o /dev/null -w "%{http_code}\n" "http://localhost:8000/public/meta?deck=bad"
+# ожидаем: 400
+
+# 4. Реальный код колоды → 200 (требуется загруженная база карт)
+curl -s -o /dev/null -w "%{http_code}\n" \
+  "http://localhost:8000/public/render?deck=AAECAa0GBsubBOWwBIWfBYGhBaChBbyhBQyY6wOtigSJowSktgShtgSHtwTbuQT++QT9+wSUoQX9ogW8owUA"
+# ожидаем: 200
+```
+
+### Публикация API наружу (reverse proxy)
+
+Не публикуйте `uvicorn` напрямую в интернет. Поставьте перед ним nginx и terminate TLS:
+
+```nginx
+server {
+    listen 443 ssl http2;
+    server_name api.example.com;
+
+    ssl_certificate     /etc/letsencrypt/live/api.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/api.example.com/privkey.pem;
+
+    location / {
+        proxy_pass         http://127.0.0.1:8000;
+        proxy_set_header   Host              $host;
+        proxy_set_header   X-Real-IP         $remote_addr;
+        proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+        proxy_read_timeout 60s;
+    }
+}
+```
+
+### Запуск в продакшене через systemd
+
+Создайте `/etc/systemd/system/deckview-bot.service` (Telegram-бот):
 
 ```ini
 [Unit]
@@ -423,9 +483,30 @@ RestartSec=10
 WantedBy=multi-user.target
 ```
 
+И `/etc/systemd/system/deckview-api.service` (HTTP API):
+
+```ini
+[Unit]
+Description=Deckview HTTP API
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/tg-manacost-bot
+ExecStart=/home/ubuntu/tg-manacost-bot/venv/bin/uvicorn api:app \
+          --host 127.0.0.1 --port 8000 --workers 2
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+```
+
 ```bash
-sudo systemctl enable deckview-bot
-sudo systemctl start deckview-bot
+sudo systemctl daemon-reload
+sudo systemctl enable --now deckview-bot deckview-api
+sudo systemctl status deckview-bot deckview-api
 ```
 
 ### Обновление базы карт
@@ -433,6 +514,18 @@ sudo systemctl start deckview-bot
 ```bash
 python update_cards.py
 ```
+
+---
+
+## 🩺 Диагностика
+
+| Симптом | Что проверить |
+|---------|---------------|
+| `ModuleNotFoundError: pkg_resources` | Обновите репозиторий — заменено на `importlib.metadata`. Если код старый: `pip install "setuptools<81"` |
+| `BOT_TOKEN не установлен` при запуске API | Файл `.env` существует в рабочей директории и содержит `BOT_TOKEN=...` (значение может быть любым, если бот не используется) |
+| `/public/render` возвращает 400 на валидный код | Не загружена база карт. Запустите `python update_cards.py` или включите Blizzard API |
+| Логи замусорены `binascii.Error` traceback'ами | Ожидаемо при невалидных кодах от пользователей — API всё равно отдаёт корректный 400 |
+| Порт 8000 занят | `uvicorn api:app --port 8001` или `lsof -i:8000` чтобы найти процесс |
 
 ---
 
