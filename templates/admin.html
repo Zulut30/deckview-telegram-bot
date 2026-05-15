@@ -20,10 +20,31 @@
       --green:     #16A34A;
       --red:       #DC2626;
       --blue:      #2563EB;
+      --amber:     #D97706;
       --shadow:    0 1px 3px rgba(0,0,0,.07), 0 1px 2px rgba(0,0,0,.04);
       --radius:    10px;
       --font:      -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, sans-serif;
+      --grid:      #F3F4F6;
+      --tick:      #9CA3AF;
     }
+
+    html[data-theme="dark"] {
+      --bg:        #0F1115;
+      --surface:   #161A22;
+      --border:    #262C36;
+      --text:      #E5E7EB;
+      --muted:     #9AA3B2;
+      --accent:    #E5E7EB;
+      --accent-lt: #1F2530;
+      --green:     #22C55E;
+      --red:       #F87171;
+      --blue:      #60A5FA;
+      --amber:     #FBBF24;
+      --shadow:    0 1px 3px rgba(0,0,0,.4), 0 1px 2px rgba(0,0,0,.3);
+      --grid:      #1F2530;
+      --tick:      #6B7280;
+    }
+    html[data-theme="dark"] .btn-primary { color: #0F1115; }
 
     body {
       font-family: var(--font);
@@ -126,7 +147,69 @@
       z-index: 10;
     }
     .topbar-title { font-size: 15px; font-weight: 600; }
-    .topbar-actions { display: flex; gap: 8px; align-items: center; }
+    .topbar-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+
+    /* ── Mobile hamburger ───────────────────────────────── */
+    .menu-toggle {
+      display: none;
+      background: none;
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      padding: 6px 10px;
+      font-size: 16px;
+      color: var(--text);
+      cursor: pointer;
+    }
+
+    /* ── Toggle / icon button ───────────────────────────── */
+    .icon-btn {
+      width: 32px; height: 32px;
+      display: inline-flex; align-items: center; justify-content: center;
+      border-radius: 7px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      cursor: pointer;
+      font-size: 14px;
+      transition: background .12s;
+    }
+    .icon-btn:hover { background: var(--accent-lt); }
+    .icon-btn.on { background: var(--accent); color: var(--surface); border-color: var(--accent); }
+
+    /* ── Skeleton loaders ───────────────────────────────── */
+    @keyframes shimmer { 0% { background-position: -200px 0; } 100% { background-position: 200px 0; } }
+    .skeleton {
+      display: inline-block;
+      background: linear-gradient(90deg, var(--accent-lt) 25%, var(--border) 50%, var(--accent-lt) 75%);
+      background-size: 400px 100%;
+      animation: shimmer 1.2s infinite linear;
+      border-radius: 4px;
+      color: transparent;
+      min-width: 40px;
+    }
+
+    /* ── Mobile responsive ──────────────────────────────── */
+    @media (max-width: 800px) {
+      .sidebar {
+        position: fixed;
+        left: -240px;
+        z-index: 100;
+        transition: left .2s ease;
+      }
+      .sidebar.open { left: 0; box-shadow: 0 0 30px rgba(0,0,0,.3); }
+      .menu-toggle { display: inline-flex; }
+      .content { padding: 16px; }
+      .topbar { padding: 12px 16px; }
+      .chart-grid { grid-template-columns: 1fr !important; }
+      .stat-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+    .scrim {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,.4);
+      z-index: 90;
+    }
+    .scrim.show { display: block; }
     .btn {
       padding: 6px 14px;
       border-radius: 7px;
@@ -545,12 +628,18 @@
   <!-- ─── Main ─────────────────────────────────────── -->
   <div class="main">
     <div class="topbar">
-      <span class="topbar-title" id="topbar-title">Обзор</span>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <button class="menu-toggle" onclick="toggleSidebar()" aria-label="Меню">☰</button>
+        <span class="topbar-title" id="topbar-title">Обзор</span>
+      </div>
       <div class="topbar-actions">
         <span id="topbar-status" style="color:var(--muted);font-size:12px;"></span>
+        <button class="icon-btn" id="autorefresh-btn" onclick="toggleAutoRefresh()" title="Авто-обновление каждые 30 сек">⟳</button>
+        <button class="icon-btn" id="theme-btn" onclick="toggleTheme()" title="Сменить тему">🌙</button>
         <button class="btn" onclick="refreshCurrent()">↺ Обновить</button>
       </div>
     </div>
+    <div class="scrim" id="scrim" onclick="toggleSidebar(false)"></div>
 
     <div class="content">
 
@@ -626,6 +715,7 @@
                 <option value="dust_cost|asc">Стоимость ↑</option>
               </select>
               <button class="btn btn-primary" onclick="loadDecks(1)">Найти</button>
+              <button class="btn" onclick="exportDecksCSV()" title="Скачать все колоды в CSV">⤓ CSV</button>
             </div>
           </div>
           <div class="table-wrap">
@@ -792,6 +882,60 @@ function toast(msg, duration = 2500) {
   el._t = setTimeout(() => el.classList.remove('show'), duration);
 }
 
+function debounce(fn, ms) {
+  let t;
+  return function (...args) {
+    clearTimeout(t);
+    t = setTimeout(() => fn.apply(this, args), ms);
+  };
+}
+
+// ── Theme (light/dark) ───────────────────────────────────
+function applyTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme);
+  $('theme-btn').textContent = theme === 'dark' ? '☀️' : '🌙';
+  localStorage.setItem('dv_theme', theme);
+  // Перерисовать графики, чтобы подтянуть цвета сетки.
+  if (chartDaily || chartModes || chartCosts) {
+    const cached = JSON.parse(localStorage.getItem('dv_overview') || 'null');
+    if (cached) renderOverview(cached);
+  }
+}
+function toggleTheme() {
+  const cur = document.documentElement.getAttribute('data-theme') || 'light';
+  applyTheme(cur === 'dark' ? 'light' : 'dark');
+}
+(function initTheme() {
+  const saved = localStorage.getItem('dv_theme');
+  const system = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  document.documentElement.setAttribute('data-theme', saved || system);
+})();
+
+// ── Sidebar (mobile) ──────────────────────────────────────
+function toggleSidebar(force) {
+  const sb = document.querySelector('.sidebar');
+  const sc = $('scrim');
+  const open = force === undefined ? !sb.classList.contains('open') : force;
+  sb.classList.toggle('open', open);
+  sc.classList.toggle('show', open);
+}
+
+// ── Auto-refresh ──────────────────────────────────────────
+let _autoRefreshTimer = null;
+function toggleAutoRefresh() {
+  const btn = $('autorefresh-btn');
+  if (_autoRefreshTimer) {
+    clearInterval(_autoRefreshTimer);
+    _autoRefreshTimer = null;
+    btn.classList.remove('on');
+    toast('Авто-обновление выключено');
+  } else {
+    _autoRefreshTimer = setInterval(() => pageInit(_currentPage), 30000);
+    btn.classList.add('on');
+    toast('Авто-обновление: каждые 30 сек');
+  }
+}
+
 function fmtDate(iso) {
   if (!iso) return '—';
   const d = new Date(iso);
@@ -839,7 +983,12 @@ function showPage(name, el) {
 
 function refreshCurrent() {
   _pageLoaded[_currentPage] = false;
-  pageInit(_currentPage);
+  // Для тяжёлого HSGuru — принудительно обходим серверный кэш.
+  if (_currentPage === 'streamer-decks') {
+    loadStreamerDecks(true);
+  } else {
+    pageInit(_currentPage);
+  }
   toast('Данные обновлены');
 }
 
@@ -861,36 +1010,47 @@ async function apiFetch(path) {
 // ── Overview ─────────────────────────────────────────────
 let chartDaily = null, chartModes = null, chartCosts = null;
 
+function renderOverview(o) {
+  $('s-total').textContent    = o.total_decks ?? '—';
+  $('s-today').textContent    = o.today_decks ?? '—';
+  $('s-week').textContent     = o.week_decks  ?? '—';
+  $('s-likes').textContent    = o.total_likes ?? '—';
+  $('s-dislikes').textContent = o.total_dislikes ?? '—';
+  ['s-total','s-today','s-week','s-likes','s-dislikes'].forEach(id => $(id).classList.remove('skeleton'));
+  renderDailyChart(o.daily || []);
+  renderModesChart(o.modes || []);
+  renderCostsChart(o.costs || []);
+}
+
 async function loadOverview() {
+  // Мгновенно показать прошлые данные из localStorage (если есть),
+  // потом — обновить в фоне свежими.
+  const cached = JSON.parse(localStorage.getItem('dv_overview') || 'null');
+  if (cached) renderOverview(cached);
+  else ['s-total','s-today','s-week','s-likes','s-dislikes'].forEach(id => { $(id).textContent = '0000'; $(id).classList.add('skeleton'); });
+
   $('topbar-status').innerHTML = '<span class="spinner"></span>';
   try {
-    const [stats, daily, modes, costs] = await Promise.all([
-      apiFetch('/admin/stats'),
-      apiFetch('/admin/charts/daily?days=30'),
-      apiFetch('/admin/charts/modes'),
-      apiFetch('/admin/charts/costs'),
-    ]);
-
-    $('s-total').textContent    = stats.total_decks ?? '—';
-    $('s-today').textContent    = stats.today_decks ?? '—';
-    $('s-week').textContent     = stats.week_decks  ?? '—';
-    $('s-likes').textContent    = stats.total_likes ?? '—';
-    $('s-dislikes').textContent = stats.total_dislikes ?? '—';
-
-    renderDailyChart(daily);
-    renderModesChart(modes);
-    renderCostsChart(costs);
-
+    const data = await apiFetch('/admin/overview');
+    renderOverview(data);
+    localStorage.setItem('dv_overview', JSON.stringify(data));
     $('topbar-status').textContent = 'Обновлено ' + new Date().toLocaleTimeString('ru-RU');
-  } catch(e) {
-    $('topbar-status').textContent = '⚠ Ошибка загрузки';
+  } catch (e) {
+    $('topbar-status').textContent = cached ? '⚠ Ошибка — показаны кэш-данные' : '⚠ Ошибка загрузки';
     console.error(e);
   }
+}
+
+function _cssVar(name) {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 }
 
 function renderDailyChart(data) {
   const labels = data.map(d => d.day);
   const values = data.map(d => d.count);
+  const text   = _cssVar('--text');
+  const grid   = _cssVar('--grid');
+  const tick   = _cssVar('--tick');
   if (chartDaily) chartDaily.destroy();
   chartDaily = new Chart($('chart-daily'), {
     type: 'line',
@@ -899,12 +1059,12 @@ function renderDailyChart(data) {
       datasets: [{
         label: 'Колод',
         data: values,
-        borderColor: '#111827',
-        backgroundColor: 'rgba(17,24,39,.07)',
+        borderColor: text,
+        backgroundColor: text + '15',
         fill: true,
         tension: .3,
         pointRadius: 3,
-        pointBackgroundColor: '#111827',
+        pointBackgroundColor: text,
       }]
     },
     options: {
@@ -912,15 +1072,16 @@ function renderDailyChart(data) {
       maintainAspectRatio: false,
       plugins: { legend: { display: false } },
       scales: {
-        y: { beginAtZero: true, grid: { color: '#F3F4F6' }, ticks: { color: '#9CA3AF', precision: 0 } },
-        x: { grid: { display: false }, ticks: { color: '#9CA3AF', maxRotation: 40, font: { size: 11 } } }
+        y: { beginAtZero: true, grid: { color: grid }, ticks: { color: tick, precision: 0 } },
+        x: { grid: { display: false }, ticks: { color: tick, maxRotation: 40, font: { size: 11 } } }
       }
     }
   });
 }
 
 function renderModesChart(data) {
-  const palette = ['#111827','#374151','#6B7280','#9CA3AF','#D1D5DB'];
+  const palette = [_cssVar('--blue'), _cssVar('--green'), _cssVar('--amber'), _cssVar('--red'), _cssVar('--muted')];
+  const text    = _cssVar('--text');
   if (chartModes) chartModes.destroy();
   chartModes = new Chart($('chart-modes'), {
     type: 'doughnut',
@@ -936,13 +1097,17 @@ function renderModesChart(data) {
       responsive: true,
       maintainAspectRatio: false,
       plugins: {
-        legend: { position: 'right', labels: { color: '#374151', font: { size: 12 }, boxWidth: 12, padding: 10 } }
+        legend: { position: 'right', labels: { color: text, font: { size: 12 }, boxWidth: 12, padding: 10 } }
       }
     }
   });
 }
 
 function renderCostsChart(data) {
+  const grid = _cssVar('--grid');
+  const tick = _cssVar('--tick');
+  const fill = _cssVar('--accent-lt');
+  const bord = _cssVar('--muted');
   if (chartCosts) chartCosts.destroy();
   chartCosts = new Chart($('chart-costs'), {
     type: 'bar',
@@ -951,8 +1116,8 @@ function renderCostsChart(data) {
       datasets: [{
         label: 'Колод',
         data: data.map(d => d.count),
-        backgroundColor: '#E5E7EB',
-        borderColor: '#9CA3AF',
+        backgroundColor: fill,
+        borderColor: bord,
         borderWidth: 1,
         borderRadius: 4,
       }]
@@ -962,11 +1127,29 @@ function renderCostsChart(data) {
       maintainAspectRatio: false,
       plugins: { legend: { display: false } },
       scales: {
-        y: { beginAtZero: true, grid: { color: '#F3F4F6' }, ticks: { color: '#9CA3AF', precision: 0 } },
-        x: { grid: { display: false }, ticks: { color: '#9CA3AF', font: { size: 12 } } }
+        y: { beginAtZero: true, grid: { color: grid }, ticks: { color: tick, precision: 0 } },
+        x: { grid: { display: false }, ticks: { color: tick, font: { size: 12 } } }
       }
     }
   });
+}
+
+// ── CSV export ───────────────────────────────────────────
+function exportDecksCSV() {
+  const params = new URLSearchParams();
+  const search = $('deck-search').value.trim();
+  const mode   = $('deck-mode-filter').value;
+  if (search) params.set('search', search);
+  if (mode)   params.set('mode', mode);
+  const url = '/admin/decks.csv' + (params.toString() ? '?' + params : '');
+  // Триггерим скачивание через скрытую ссылку.
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'decks.csv';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  toast('Загрузка CSV…');
 }
 
 // ── Decks ─────────────────────────────────────────────────
@@ -1122,11 +1305,11 @@ async function loadSchema() {
 let _sdAllDecks = [];
 let _sdFilter = 'all';
 
-async function loadStreamerDecks() {
-  $('sd-tbody').innerHTML = `<tr><td colspan="6" class="empty"><span class="spinner"></span>Загрузка данных с HSGuru… (может занять ~10 сек)</td></tr>`;
+async function loadStreamerDecks(force) {
+  $('sd-tbody').innerHTML = `<tr><td colspan="6" class="empty"><span class="spinner"></span>Загрузка данных с HSGuru…${force ? ' (принудительное обновление, до 10 сек)' : ' (из кэша или до 10 сек)'}</td></tr>`;
   $('sd-summary').innerHTML = '';
   try {
-    _sdAllDecks = await apiFetch('/admin/streamer-decks');
+    _sdAllDecks = await apiFetch('/admin/streamer-decks' + (force ? '?refresh=true' : ''));
     sdRender();
   } catch(e) {
     $('sd-tbody').innerHTML = `<tr><td colspan="6" class="empty">Ошибка загрузки данных</td></tr>`;
@@ -1213,12 +1396,43 @@ function sdRender() {
 }
 
 // ── Init ──────────────────────────────────────────────────
+applyTheme(document.documentElement.getAttribute('data-theme') || 'light');
 _pageLoaded['overview'] = true;
 loadOverview();
 
-// Search on Enter
+// Поиск: Enter — мгновенный, ввод — с debounce 350ms.
+const _deckSearchDebounced = debounce(() => loadDecks(1), 350);
 $('deck-search').addEventListener('keydown', e => {
-  if (e.key === 'Enter') loadDecks(1);
+  if (e.key === 'Enter') { e.preventDefault(); loadDecks(1); }
+});
+$('deck-search').addEventListener('input', _deckSearchDebounced);
+$('deck-mode-filter').addEventListener('change', () => loadDecks(1));
+$('deck-sort').addEventListener('change', () => loadDecks(1));
+
+// Streamer-decks search: debounce 250ms (sdRender — клиентский фильтр).
+const _sdSearchEl = $('sd-search');
+if (_sdSearchEl) {
+  const _sdDebounced = debounce(() => sdRender(), 250);
+  _sdSearchEl.removeAttribute('oninput');
+  _sdSearchEl.addEventListener('input', _sdDebounced);
+}
+
+// Закрывать мобильное меню при выборе пункта.
+document.querySelectorAll('.nav-item').forEach(n => {
+  n.addEventListener('click', () => {
+    if (window.innerWidth <= 800) toggleSidebar(false);
+  });
+});
+
+// Горячие клавиши: r — обновить, t — тема, / — фокус на поиск.
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+  if (e.key === 'r') { e.preventDefault(); refreshCurrent(); }
+  else if (e.key === 't') { e.preventDefault(); toggleTheme(); }
+  else if (e.key === '/') {
+    if (_currentPage === 'decks')          { e.preventDefault(); $('deck-search').focus(); }
+    else if (_currentPage === 'streamer-decks') { e.preventDefault(); $('sd-search').focus(); }
+  }
 });
 </script>
 </body>

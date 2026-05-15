@@ -61,6 +61,26 @@ _db = DeckDatabase()
 
 _ADMIN_HTML = Path(__file__).parent / "templates" / "admin.html"
 
+# Кэш HTML админки в памяти, читаем с диска только если файл изменился.
+_ADMIN_HTML_CACHE: dict = {"mtime": 0.0, "content": ""}
+
+
+def _read_admin_html() -> str:
+    """Возвращает HTML админки, перечитывая с диска только при изменении файла."""
+    if not _ADMIN_HTML.exists():
+        return ""
+    mtime = _ADMIN_HTML.stat().st_mtime
+    if mtime != _ADMIN_HTML_CACHE["mtime"]:
+        _ADMIN_HTML_CACHE["mtime"] = mtime
+        _ADMIN_HTML_CACHE["content"] = _ADMIN_HTML.read_text(encoding="utf-8")
+    return _ADMIN_HTML_CACHE["content"]
+
+
+# Кэш ответа /admin/streamer-decks. HSGuru-парсинг занимает ~10с,
+# поэтому отдаём свежие данные в течение 5 минут без повторного скрейпа.
+_STREAMER_CACHE: dict = {"ts": 0.0, "data": None}
+_STREAMER_TTL_SECONDS = 300
+
 
 def _auth(x_api_key: str | None) -> None:
     if config.API_KEY and x_api_key != config.API_KEY:
@@ -221,11 +241,12 @@ async def ingest(payload: IngestPayload, x_api_key: str | None = Header(default=
 
 @app.get("/admin", response_class=HTMLResponse, include_in_schema=False)
 async def admin_panel(x_api_key: str | None = Header(default=None)):
-    """Возвращает HTML панели администратора."""
+    """Возвращает HTML панели администратора (с in-memory кэшом)."""
     _auth(x_api_key)
-    if not _ADMIN_HTML.exists():
+    html = _read_admin_html()
+    if not html:
         raise HTTPException(status_code=503, detail="Admin panel HTML not found")
-    return HTMLResponse(_ADMIN_HTML.read_text(encoding="utf-8"))
+    return HTMLResponse(html, headers={"Cache-Control": "private, max-age=60"})
 
 
 @app.get("/admin/stats")
@@ -235,6 +256,58 @@ async def admin_stats(x_api_key: str | None = Header(default=None)):
     stats = _db.get_statistics()
     top_voted = _db.get_top_voted_decks(limit=5)
     return {**stats, "top_voted": top_voted}
+
+
+@app.get("/admin/overview")
+async def admin_overview(x_api_key: str | None = Header(default=None)):
+    """
+    Комбинированный endpoint для главной страницы дашборда: статистика,
+    графики и топ голосов одним запросом. Уменьшает количество round-trip'ов
+    с 4 до 1.
+    """
+    _auth(x_api_key)
+    stats = _db.get_statistics()
+    return {
+        **stats,
+        "top_voted": _db.get_top_voted_decks(limit=5),
+        "daily": _db.get_decks_per_day(days=30),
+        "modes": _db.get_mode_distribution(),
+        "costs": _db.get_cost_distribution(),
+    }
+
+
+@app.get("/admin/decks.csv", include_in_schema=False)
+async def admin_decks_csv(
+    mode: str | None = Query(default=None),
+    search: str | None = Query(default=None),
+    x_api_key: str | None = Header(default=None),
+):
+    """Экспортирует все колоды (с учётом фильтров) в CSV."""
+    _auth(x_api_key)
+    import csv
+    from io import StringIO
+
+    buf = StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(["id", "deck_code", "mode", "dust_cost", "created_at"])
+
+    page = 1
+    while True:
+        chunk = _db.get_all_decks(
+            page=page, per_page=500, mode=mode or None, search=search or None,
+            sort_by="created_at", sort_dir="desc",
+        )
+        for it in chunk["items"]:
+            writer.writerow([it["id"], it["deck_code"], it["mode"] or "", it["dust_cost"] or "", it["created_at"]])
+        if page >= chunk["pages"]:
+            break
+        page += 1
+
+    return Response(
+        content=buf.getvalue(),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="decks.csv"'},
+    )
 
 
 @app.get("/admin/decks")
@@ -291,15 +364,34 @@ async def admin_schema(x_api_key: str | None = Header(default=None)):
 
 
 @app.get("/admin/streamer-decks", tags=["Private"])
-async def admin_streamer_decks(x_api_key: str | None = Header(default=None)):
+async def admin_streamer_decks(
+    refresh: bool = Query(default=False, description="Принудительно обойти кэш"),
+    x_api_key: str | None = Header(default=None),
+):
     """
     Возвращает все колоды, которые бот видит на HSGuru, с оценкой статуса:
     - approved  — уже опубликована на сайт
     - pending   — новая, пройдёт публикацию при следующей проверке
     - rejected  — отклонена с указанием причины
+
+    Результат кэшируется в памяти на 5 минут — повторное открытие вкладки
+    больше не блокирует UI на 10 секунд. `?refresh=true` принудительно
+    обходит кэш.
     """
     _auth(x_api_key)
     import asyncio
+    import time
+
+    now = time.time()
+    if (
+        not refresh
+        and _STREAMER_CACHE["data"] is not None
+        and now - _STREAMER_CACHE["ts"] < _STREAMER_TTL_SECONDS
+    ):
+        return _STREAMER_CACHE["data"]
+
     loop = asyncio.get_event_loop()
     decks = await loop.run_in_executor(None, hsguru_scraper.get_all_decks_with_status)
+    _STREAMER_CACHE["ts"] = now
+    _STREAMER_CACHE["data"] = decks
     return decks
