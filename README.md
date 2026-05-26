@@ -38,6 +38,7 @@
   - [2. Получить метаданные колоды](#2-получить-метаданные-колоды)
   - [3. Список переводов архетипов](#3-список-переводов-архетипов)
   - [4. Перевести название колоды](#4-перевести-название-колоды)
+- [Временное API на текущем сервере](#-временное-api-на-текущем-сервере)
 - [Установка и настройка](#установка-и-настройка)
 - [Запуск](#запуск)
 - [Структура проекта](#структура-проекта)
@@ -58,6 +59,149 @@
 ```
 https://your-server/docs
 ```
+
+---
+
+## 🌍 Временное API на текущем сервере
+
+Пока DNS домена переносится, рабочий Deckview API доступен по IP:
+
+```
+http://135.125.171.168/deckview-api/v1
+```
+
+Публичные endpoints работают без ключа:
+
+- `GET /health`
+- `GET|POST /render`
+- `GET|POST /translate`
+- `GET /archetypes`
+
+Приватным остаётся только `/publish`, потому что он может публиковать записи в WordPress и Telegram. Для него передавайте токен одним из способов:
+
+```http
+Authorization: Bearer <API_TOKEN>
+```
+
+или:
+
+```http
+X-API-Key: <API_TOKEN>
+```
+
+Токен для `/publish` хранится на сервере в `/home/ubuntu/Deckview/.env` как `API_TOKEN`. Реальное значение токена нельзя хранить в git-репозитории, README, issue или публичном чате: при утечке нужно сразу заменить `API_TOKEN` и перезапустить `deckview-web`.
+
+### Health check
+
+```bash
+curl http://135.125.171.168/deckview-api/v1/health
+```
+
+Ответ:
+
+```json
+{
+  "success": true,
+  "service": "deckview",
+  "status": "ok",
+  "public_api": true,
+  "auth_required": false,
+  "publish_auth_required": true
+}
+```
+
+### Рендер колоды
+
+```bash
+curl -X POST "http://135.125.171.168/deckview-api/v1/render" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "deck_code": "AAE...",
+    "deck_name": "Название колоды"
+  }'
+```
+
+То же самое можно вызвать через GET:
+
+```bash
+curl "http://135.125.171.168/deckview-api/v1/render?deck_code=AAE...&deck_name=Название"
+```
+
+Успешный ответ:
+
+```json
+{
+  "success": true,
+  "cached": false,
+  "deck_name": "Название колоды",
+  "cost": 3560,
+  "deck_class": "Охотник на демонов",
+  "deck_mode": "Стандарт",
+  "filename": "deck_20260526_205930.jpg",
+  "image_path": "/static/generated/deck_20260526_205930.jpg",
+  "image_url": "http://135.125.171.168/static/generated/deck_20260526_205930.jpg"
+}
+```
+
+### Перевод названия колоды
+
+```bash
+curl -X POST "http://135.125.171.168/deckview-api/v1/translate" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Spell Mage"}'
+```
+
+Ответ:
+
+```json
+{
+  "success": true,
+  "count": 1,
+  "translated": "Спелл Маг",
+  "items": [
+    {
+      "source": "Spell Mage",
+      "translated": "Спелл Маг"
+    }
+  ]
+}
+```
+
+Можно передать несколько названий:
+
+```json
+{
+  "names": ["Spell Mage", "Control Warrior"]
+}
+```
+
+### Таблица архетипов
+
+```bash
+curl "http://135.125.171.168/deckview-api/v1/archetypes?search=mage&limit=50" \
+```
+
+### Публикация колоды
+
+Endpoint использует текущую связку Telegram/WordPress. Для безопасной проверки используйте `dry_run: true`: он валидирует payload и ничего не публикует.
+
+```bash
+curl -X POST "http://135.125.171.168/deckview-api/v1/publish" \
+  -H "Authorization: Bearer $API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "dry_run": true,
+    "deck_code": "AAE...",
+    "deck_name": "Название колоды",
+    "streamer": "Streamer",
+    "wins": 12,
+    "losses": 4,
+    "to_telegram": false,
+    "to_wordpress": true
+  }'
+```
+
+Для реальной публикации уберите `dry_run` или передайте `false`.
 
 ---
 

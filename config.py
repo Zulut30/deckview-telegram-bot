@@ -45,8 +45,10 @@ WP_USER = os.getenv("WP_USER", "")
 WP_APP_PASSWORD = os.getenv("WP_APP_PASSWORD", "")
 WP_UPLOAD_ENABLED = os.getenv("WP_UPLOAD_ENABLED", "1") == "1"
 
-# API ключ для собственного HTTP API (опционально)
-API_KEY = os.getenv("API_KEY", "")
+# API ключ для собственного HTTP API (опционально).
+# API_TOKEN оставлен как алиас для приватного publish во временном IP API.
+API_KEY = os.getenv("API_KEY", "") or os.getenv("API_TOKEN", "")
+API_TOKEN = os.getenv("API_TOKEN", "") or API_KEY
 
 # Экспорт изображений на сервер (локальная папка)
 IMAGE_EXPORT_ENABLED = os.getenv("IMAGE_EXPORT_ENABLED", "0") == "1"
@@ -78,5 +80,3 @@ CHANNEL_ID = os.getenv("CHANNEL_ID", "")
 # Проверка наличия обязательных переменных
 if not BOT_TOKEN:
     raise ValueError("BOT_TOKEN не установлен в переменных окружения!")
-
-
