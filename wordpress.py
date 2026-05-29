@@ -1,66 +1,55 @@
 """
-WordPress REST API Integration for Hearthstone Deck Manager.
-Handles image uploads and deck post creation with full metadata.
+WordPress REST API integration for Hearthstone deck publishing.
+Handles media uploads, hs_deck post creation and Manacost custom meta writes.
 """
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 from io import BytesIO
-import hashlib
-from pathlib import Path
-from typing import Optional, Dict, List, Any
-import urllib.request
+from typing import Any, Dict, List, Optional
 import urllib.error
-import urllib.parse
+import urllib.request
 
 import config
 
 
 class WordPressClient:
     """WordPress REST API client with comprehensive error handling."""
-    
+
     def __init__(self):
         self.base_url = config.WP_BASE_URL
         self.user = config.WP_USER
         self.password = config.WP_APP_PASSWORD
         self.enabled = config.WP_UPLOAD_ENABLED
-        self._taxonomy_cache: Dict[str, List[Dict]] = {}
-    
+        self._taxonomy_cache: Dict[str, List[Dict[str, Any]]] = {}
+
     def _auth_header(self) -> Optional[str]:
-        """Generate Basic Auth header."""
         if not (self.base_url and self.user and self.password):
             return None
         token = f"{self.user}:{self.password}".encode("utf-8")
         return "Basic " + base64.b64encode(token).decode("utf-8")
-    
+
     def _request(
         self,
         method: str,
         endpoint: str,
         data: Optional[bytes] = None,
         headers: Optional[Dict[str, str]] = None,
-        timeout: int = 60
+        timeout: int = 60,
     ) -> Dict[str, Any]:
-        """
-        Make authenticated request to WordPress REST API.
-        
-        Returns:
-            dict with 'success', 'data', 'error' keys
-        """
         auth = self._auth_header()
         if not auth:
             return {"success": False, "error": "WordPress credentials not configured", "data": None}
-        
-        url = f"{self.base_url}{endpoint}"
-        req = urllib.request.Request(url, data=data, method=method)
+
+        req = urllib.request.Request(f"{self.base_url}{endpoint}", data=data, method=method)
         req.add_header("Authorization", auth)
-        req.add_header("User-Agent", "ManaCost-Bot/1.0")
-        
+        req.add_header("User-Agent", "Deckview/1.0")
         if headers:
             for key, value in headers.items():
                 req.add_header(key, value)
-        
+
         try:
             with urllib.request.urlopen(req, timeout=timeout) as resp:
                 body = resp.read().decode("utf-8")
@@ -68,27 +57,26 @@ class WordPressClient:
                     "success": True,
                     "data": json.loads(body) if body else {},
                     "error": None,
-                    "status": resp.status
+                    "status": resp.status,
                 }
         except urllib.error.HTTPError as e:
             error_body = ""
             try:
                 error_body = e.read().decode("utf-8")
-            except:
+            except Exception:
                 pass
             return {
                 "success": False,
                 "error": f"HTTP {e.code}: {e.reason}",
                 "data": json.loads(error_body) if error_body else None,
-                "status": e.code
+                "status": e.code,
             }
         except urllib.error.URLError as e:
             return {"success": False, "error": f"URL Error: {e.reason}", "data": None}
         except Exception as e:
             return {"success": False, "error": str(e), "data": None}
-    
+
     def test_connection(self) -> Dict[str, Any]:
-        """Test WordPress API connection and authentication."""
         result = self._request("GET", "/wp-json/wp/v2/users/me")
         if result["success"]:
             user_data = result["data"]
@@ -96,61 +84,54 @@ class WordPressClient:
                 "success": True,
                 "user": user_data.get("name", "Unknown"),
                 "user_id": user_data.get("id"),
-                "roles": user_data.get("roles", [])
+                "roles": user_data.get("roles", []),
             }
         return result
-    
-    def get_taxonomy_terms(self, taxonomy: str, force_refresh: bool = False) -> List[Dict]:
-        """Get all terms for a taxonomy with caching."""
+
+    def get_taxonomy_terms(self, taxonomy: str, force_refresh: bool = False) -> List[Dict[str, Any]]:
         if taxonomy in self._taxonomy_cache and not force_refresh:
             return self._taxonomy_cache[taxonomy]
-        
+
         result = self._request("GET", f"/wp-json/wp/v2/{taxonomy}?per_page=100")
         if result["success"] and isinstance(result["data"], list):
             self._taxonomy_cache[taxonomy] = result["data"]
             return result["data"]
         return []
-    
-    def find_term_id(self, taxonomy: str, term_name: str) -> Optional[int]:
-        """Find term ID by name (case-insensitive)."""
+
+    def find_term_id(self, taxonomy: str, term_name: Optional[str]) -> Optional[int]:
         if not term_name:
             return None
-        
+
         terms = self.get_taxonomy_terms(taxonomy)
-        term_name_lower = term_name.strip().lower()
-        
+        term_name_lower = str(term_name).strip().lower()
         for term in terms:
             if term.get("name", "").strip().lower() == term_name_lower:
                 return term.get("id")
-            # Also check slug
             if term.get("slug", "").strip().lower() == term_name_lower:
                 return term.get("id")
-        
         return None
-    
+
     def upload_media(self, image_bytes: BytesIO, filename: str) -> Dict[str, Any]:
-        """Upload image to WordPress media library."""
         result = self._request(
             "POST",
             "/wp-json/wp/v2/media",
             data=image_bytes.getvalue(),
             headers={
                 "Content-Type": "image/png",
-                "Content-Disposition": f'attachment; filename="{filename}"'
+                "Content-Disposition": f'attachment; filename="{filename}"',
             },
-            timeout=120  # Longer timeout for uploads
+            timeout=120,
         )
-        
         if result["success"]:
             media_data = result["data"]
             return {
                 "success": True,
                 "media_id": media_data.get("id"),
                 "url": media_data.get("source_url"),
-                "data": media_data
+                "data": media_data,
             }
         return result
-    
+
     def create_deck_post(
         self,
         title: str,
@@ -170,14 +151,6 @@ class WordPressClient:
         worst: str = "",
         legend_rank: str = "",
     ) -> Dict[str, Any]:
-        """
-        Create hs_deck post with all metadata.
-        
-        This uses a two-step approach:
-        1. Create the post with basic data
-        2. Update meta fields separately if needed
-        """
-        # Build tags string (streamer/player names only)
         tag_list = []
         if streamer:
             tag_list.append(streamer)
@@ -186,13 +159,12 @@ class WordPressClient:
         if tags:
             tag_list.extend(tags)
         tags_string = ", ".join(tag_list)
-        
-        # Find taxonomy term IDs
+
         class_id = self.find_term_id("deck_class", deck_class)
         mode_id = self.find_term_id("deck_mode", deck_mode)
-        
-        # Build post data with meta
-        post_data = {
+        legend_val = int(legend_rank) if str(legend_rank).strip().isdigit() else ""
+
+        post_data: Dict[str, Any] = {
             "title": title,
             "status": "publish",
             "meta": {
@@ -202,81 +174,56 @@ class WordPressClient:
                 "_deck_streamer": streamer or "",
                 "_deck_player": player or streamer or "",
                 "_deck_source_url": source_url or "",
-                # Статистика (всегда сохраняем, даже если 0)
-                "_deck_wins": int(wins) if (wins is not None and wins != '') else 0,
-                "_deck_losses": int(losses) if (losses is not None and losses != '') else 0,
+                "_deck_wins": int(wins) if (wins is not None and wins != "") else 0,
+                "_deck_losses": int(losses) if (losses is not None and losses != "") else 0,
                 "_deck_peak": str(peak) if peak else "",
                 "_deck_latest": str(latest) if latest else "",
                 "_deck_worst": str(worst) if worst else "",
-                "_deck_legend_rank": int(legend_rank) if str(legend_rank).isdigit() else "",
-            }
+                "_deck_legend_rank": legend_val,
+            },
         }
-        
+
         if media_id:
             post_data["featured_media"] = media_id
-        
         if class_id:
             post_data["deck_class"] = [class_id]
         elif deck_class:
-            print(f"   [WARN] Термин deck_class не найден в WordPress для значения '{deck_class}'. Проверьте, что таксономия deck_class содержит термин с таким именем или slug.")
-
+            print(f"   [WARN] deck_class term not found in WordPress: {deck_class}")
         if mode_id:
             post_data["deck_mode"] = [mode_id]
         elif deck_mode:
-            print(f"   [WARN] Термин deck_mode не найден в WordPress для значения '{deck_mode}'.")
+            print(f"   [WARN] deck_mode term not found in WordPress: {deck_mode}")
 
-        print(f"   [DEBUG] Creating post with data:")
-        print(f"      Title: {title}")
-        print(f"      Streamer: {streamer}")
-        print(f"      Stats: wins={wins}, losses={losses}, total={wins + losses}")
-        print(f"      Ranks: peak={peak}, latest={latest}, worst={worst}, legend={legend_rank}")
-        print(f"      Meta keys: {list(post_data['meta'].keys())}")
-        print(f"      Class ID: {class_id}, Mode ID: {mode_id}")
-        
-        # Create the post
         payload = json.dumps(post_data, ensure_ascii=False).encode("utf-8")
         result = self._request(
             "POST",
             "/wp-json/wp/v2/hs_deck",
             data=payload,
-            headers={"Content-Type": "application/json"}
+            headers={"Content-Type": "application/json"},
         )
-        
         if not result["success"]:
-            print(f"   [ERROR] Post creation failed: {result['error']}")
-            if result.get("data"):
-                print(f"   [ERROR] Response: {result['data']}")
             return result
-        
+
         post_id = result["data"].get("id")
-        print(f"   [OK] Post created with ID: {post_id}")
-        
-        # Always update meta via custom endpoint (bypasses WP protected meta restrictions)
-        print(f"   [*] Writing meta via custom endpoint...")
-        print(f"   [DEBUG] Meta data being sent: {json.dumps({k: v for k, v in post_data['meta'].items() if k.startswith('_deck_')}, ensure_ascii=False)}")
         update_result = self._update_post_meta(post_id, post_data["meta"])
-        if update_result["success"]:
-            updated_fields = update_result.get("data", {}).get("updated", {})
-            print(f"   [OK] Meta saved: {list(updated_fields.keys()) if updated_fields else 'all fields'}")
-            if updated_fields:
-                print(f"   [DEBUG] Updated fields: {updated_fields}")
-        else:
-            print(f"   [ERROR] Meta save failed: {update_result.get('error')}")
-            if update_result.get("data"):
-                print(f"   [ERROR] Response data: {update_result.get('data')}")
-        
+        if not update_result["success"]:
+            print(f"   [WARN] Post created but meta save failed: {update_result.get('error')}")
+
         return {
             "success": True,
             "post_id": post_id,
             "url": result["data"].get("link"),
-            "data": result["data"]
+            "data": result["data"],
         }
-    
+
     def _update_post_meta(self, post_id: int, meta: Dict[str, Any]) -> Dict[str, Any]:
-        """Update post meta fields via custom endpoint (bypasses WP restrictions)."""
-        # Convert meta keys to endpoint format (remove leading underscore)
-        payload_data = {}
-        
+        payload_data: Dict[str, Any] = {
+            "wins": 0,
+            "losses": 0,
+            # The [hs_decks] feed hides imported posts unless this is explicitly disabled.
+            "hide_from_feed": "0",
+        }
+
         if "_deck_code" in meta:
             payload_data["deck_code"] = meta["_deck_code"]
         if "_dust_cost" in meta:
@@ -289,55 +236,37 @@ class WordPressClient:
             payload_data["player"] = meta["_deck_player"]
         if "_deck_source_url" in meta:
             payload_data["source_url"] = meta["_deck_source_url"]
-        # Статистика (ВСЕГДА передаем, даже если 0)
         if "_deck_wins" in meta:
-            wins_val = meta["_deck_wins"]
-            payload_data["wins"] = int(wins_val) if (wins_val is not None and wins_val != '') else 0
-        else:
-            # Если поля нет в meta, передаем 0
-            payload_data["wins"] = 0
-            
+            payload_data["wins"] = int(meta["_deck_wins"] or 0)
         if "_deck_losses" in meta:
-            losses_val = meta["_deck_losses"]
-            payload_data["losses"] = int(losses_val) if (losses_val is not None and losses_val != '') else 0
-        else:
-            # Если поля нет в meta, передаем 0
-            payload_data["losses"] = 0
-        if "_deck_peak" in meta and meta["_deck_peak"]:
+            payload_data["losses"] = int(meta["_deck_losses"] or 0)
+        if meta.get("_deck_peak"):
             payload_data["peak"] = str(meta["_deck_peak"])
-        if "_deck_latest" in meta and meta["_deck_latest"]:
+        if meta.get("_deck_latest"):
             payload_data["latest"] = str(meta["_deck_latest"])
-        if "_deck_worst" in meta and meta["_deck_worst"]:
+        if meta.get("_deck_worst"):
             payload_data["worst"] = str(meta["_deck_worst"])
-        if "_deck_legend_rank" in meta and meta["_deck_legend_rank"] != "":
+        if meta.get("_deck_legend_rank") != "":
             payload_data["legend_rank"] = int(meta["_deck_legend_rank"])
-        
-        # Логируем что отправляется
-        if payload_data:
-            print(f"   [DEBUG] Sending to endpoint: {list(payload_data.keys())}")
-        
-        payload = json.dumps(payload_data, ensure_ascii=False).encode("utf-8")
+
         return self._request(
             "POST",
             f"/wp-json/manacost/v1/deck-meta/{post_id}",
-            data=payload,
-            headers={"Content-Type": "application/json"}
+            data=json.dumps(payload_data, ensure_ascii=False).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
         )
 
 
-# Singleton instance
 _client: Optional[WordPressClient] = None
 
 
 def get_client() -> WordPressClient:
-    """Get or create WordPress client instance."""
     global _client
     if _client is None:
         _client = WordPressClient()
     return _client
 
 
-# Legacy functions for backward compatibility
 def _wp_auth_header() -> Optional[str]:
     return get_client()._auth_header()
 
@@ -378,7 +307,7 @@ def create_hs_deck_post(
     player: Optional[str],
     dust_cost: int,
     source_url: Optional[str],
-    image_bytes: BytesIO,
+    image_bytes: Optional[BytesIO],
     deck_class: Optional[str] = None,
     deck_mode: Optional[str] = None,
     wins: int = 0,
@@ -388,34 +317,26 @@ def create_hs_deck_post(
     worst: str = "",
     legend_rank: str = "",
 ) -> bool:
-    """
-    Create hs_deck post in WordPress with all metadata.
-    Legacy wrapper for backward compatibility.
-    """
     client = get_client()
-    
     if not client.enabled:
         print("[SKIP] WP_UPLOAD_ENABLED=0")
         return False
-    
-    # Upload image
-    filename = f"deck-{hashlib.sha256(deck_code.encode('utf-8')).hexdigest()[:12]}.png"
-    upload_result = client.upload_media(image_bytes, filename)
-    
-    if not upload_result["success"]:
-        print(f"[ERROR] Media upload failed: {upload_result.get('error')}")
-        send_ingest_log({
-            "status": "error",
-            "deck_name": deck_name,
-            "deck_code": deck_code[:20] + "...",
-            "message": f"media upload failed: {upload_result.get('error')}"
-        })
-        return False
-    
-    media_id = upload_result.get("media_id")
-    print(f"   [OK] Media uploaded: ID={media_id}")
-    
-    # Create post
+
+    media_id = None
+    if image_bytes is not None and not getattr(config, "WP_USE_KOLODAHS_IMAGE", False):
+        filename = f"deck-{hashlib.sha256(deck_code.encode('utf-8')).hexdigest()[:12]}.png"
+        upload_result = client.upload_media(image_bytes, filename)
+        if not upload_result["success"]:
+            print(f"[ERROR] Media upload failed: {upload_result.get('error')}")
+            send_ingest_log({
+                "status": "error",
+                "deck_name": deck_name,
+                "deck_code": deck_code[:20] + "...",
+                "message": f"media upload failed: {upload_result.get('error')}",
+            })
+            return False
+        media_id = upload_result.get("media_id")
+
     post_result = client.create_deck_post(
         title=deck_name,
         deck_code=deck_code,
@@ -433,22 +354,21 @@ def create_hs_deck_post(
         worst=worst,
         legend_rank=legend_rank,
     )
-    
+
     if not post_result["success"]:
         send_ingest_log({
             "status": "error",
             "deck_name": deck_name,
             "deck_code": deck_code[:20] + "...",
-            "message": f"post creation failed: {post_result.get('error')}"
+            "message": f"post creation failed: {post_result.get('error')}",
         })
         return False
-    
+
     send_ingest_log({
         "status": "success",
         "deck_name": deck_name,
         "deck_code": deck_code[:20] + "...",
         "post_id": post_result.get("post_id"),
-        "message": "created successfully"
+        "message": "created successfully",
     })
-    
     return True

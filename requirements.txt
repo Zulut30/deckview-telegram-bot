@@ -7,5 +7,10 @@ uvicorn==0.30.6
 aiohttp==3.10.5
 beautifulsoup4==4.12.3
 cloudscraper
-
+requests>=2.31.0
+PySocks==1.7.1
+crawlee==1.7.1
+DrissionPage==4.1.1
+Flask==3.0.0
+gunicorn==23.0.0
 
