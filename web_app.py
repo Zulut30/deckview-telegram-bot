@@ -8,6 +8,7 @@ import json
 import os
 import shutil
 import threading
+import time
 from datetime import datetime
 from config import API_TOKEN, CHANNEL_ID, DASHBOARD_SECRET, PUBLIC_API_AUTH_REQUIRED, WEB_HOST, WEB_PORT
 from dashboard import bp as dashboard_bp, admin_bp
@@ -22,7 +23,14 @@ from hsguru_fetch import (
     translate_deck_name,
 )
 from image_creator import create_picture
+from perf_telemetry import emit_render_timing
 from publish import publish_deck
+from render_cache import (
+    acquire_render_lock,
+    lookup_render_cache,
+    release_render_lock,
+    store_render_cache,
+)
 from web_db import (
     init_db,
     find_cached,
@@ -34,6 +42,18 @@ from web_db import (
 )
 from framework.bgs_manager import BGSManager
 from image_creator.bgs_placer import place_bgs_board
+
+if os.getenv("DECKVIEW_WEB_PRELOAD_CARDS", "0").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}:
+    # Gunicorn runs with --preload in production, so the master pays this cost
+    # once and the two web workers inherit the read-mostly indexes via COW.
+    from deckview_worker import _preload_shared_card_catalog
+
+    _preload_shared_card_catalog()
 
 app = Flask(__name__)
 bgs_manager = BGSManager()
@@ -83,20 +103,34 @@ def index():
 GENERATE_TIMEOUT = int(os.getenv("WEB_GENERATE_TIMEOUT", "120"))
 
 
-def _run_create_picture(deck_code, deck_name):
+def _run_create_picture(
+    deck_code,
+    deck_name,
+    timings=None,
+    *,
+    image_style="classic",
+):
     """
     Запускает create_picture в отдельном OS-потоке с собственным asyncio event loop.
     Это отделяет долгую генерацию от Flask-воркера и даёт жёсткий таймаут.
     """
     result_holder = []
     exc_holder = []
+    worker_timings = {}
 
     def _worker():
         # SelectorEventLoop явно создаётся для этого фонового потока.
         loop = asyncio.SelectorEventLoop()
         asyncio.set_event_loop(loop)
         try:
-            res = loop.run_until_complete(create_picture(deck_code, deck_name=deck_name))
+            res = loop.run_until_complete(
+                create_picture(
+                    deck_code,
+                    deck_name=deck_name,
+                    timings=worker_timings,
+                    image_style=image_style,
+                )
+            )
             result_holder.append(res)
         except Exception as e:
             exc_holder.append(e)
@@ -113,6 +147,8 @@ def _run_create_picture(deck_code, deck_name):
         raise exc_holder[0]
     if not result_holder:
         raise RuntimeError("Генерация не вернула результат")
+    if timings is not None:
+        timings.update(worker_timings)
     return result_holder[0]
 
 
@@ -160,6 +196,49 @@ def _bool_from_payload(data, key, default=False):
     if normalized in {"0", "false", "no", "n", "off"}:
         return False
     return default
+
+
+_PUBLIC_RENDER_STYLES = {"classic", "parchment"}
+
+
+def _public_render_style(data, *, force_parchment=False):
+    """Validate and return the canonical public render style."""
+    if force_parchment:
+        return "parchment"
+    raw = (
+        data.get("image_style")
+        or data.get("style")
+        or request.args.get("image_style")
+        or request.args.get("style")
+        or "classic"
+    )
+    style = str(raw).strip().lower()
+    aliases = {
+        "pergament": "parchment",
+        "пергамент": "parchment",
+    }
+    style = aliases.get(style, style)
+    if style not in _PUBLIC_RENDER_STYLES:
+        raise ValueError("image_style must be classic or parchment")
+    return style
+
+
+def _request_latency_ms(started_ns):
+    return round((time.perf_counter_ns() - started_ns) / 1_000_000, 3)
+
+
+def _api_json_response(payload, *, started_ns, status=200, cacheable=False):
+    body = dict(payload)
+    body["latency_ms"] = _request_latency_ms(started_ns)
+    response = jsonify(body)
+    response.status_code = status
+    response.headers["Server-Timing"] = f'app;dur={body["latency_ms"]}'
+    response.headers["Cache-Control"] = (
+        "public, max-age=60, stale-while-revalidate=300"
+        if cacheable
+        else "no-store"
+    )
+    return response
 
 
 def _generated_image_urls(filename):
@@ -235,6 +314,7 @@ def deckview_api_health():
         "publish_auth_required": True,
         "endpoints": {
             "render": "/deckview-api/v1/render",
+            "render_parchment": "/deckview-api/v1/render/parchment",
             "translate": "/deckview-api/v1/translate",
             "archetype": "/deckview-api/v1/archetype",
             "archetypes": "/deckview-api/v1/archetypes",
@@ -332,11 +412,30 @@ def deckview_api_archetype():
 
 @app.route("/deckview-api/v1/render", methods=["GET", "POST"])
 @app.route("/deckview-api/v1/decks/render", methods=["GET", "POST"])
+@app.route("/deckview-api/v1/render/parchment", methods=["GET", "POST"])
+@app.route("/deckview-api/v1/decks/render/parchment", methods=["GET", "POST"])
 def deckview_api_render():
+    handler_started = time.perf_counter_ns()
     data = _deckview_api_payload()
     auth_error = _require_deckview_api_auth(data, public_endpoint=True)
     if auth_error:
         return auth_error
+
+    try:
+        image_style = _public_render_style(
+            data,
+            force_parchment=request.path.endswith("/parchment"),
+        )
+    except ValueError as exc:
+        return _api_json_response(
+            {
+                "success": False,
+                "error": str(exc),
+                "error_code": "INVALID_IMAGE_STYLE",
+            },
+            started_ns=handler_started,
+            status=400,
+        )
 
     deck_code = (
         data.get("deck_code")
@@ -352,59 +451,202 @@ def deckview_api_render():
     ).strip() or None
 
     if not deck_code:
-        return jsonify({"success": False, "error": "deck_code required"}), 400
+        return _api_json_response(
+            {
+                "success": False,
+                "error": "deck_code required",
+                "error_code": "DECK_CODE_REQUIRED",
+            },
+            started_ns=handler_started,
+            status=400,
+        )
 
-    cached = find_cached(deck_code, deck_name)
-    if cached:
-        filepath = os.path.join(GENERATED_DIR, cached["filename"])
-        if os.path.isfile(filepath):
-            return jsonify({
+    timings = {}
+    trace_id = os.urandom(8).hex()
+
+    def lookup_cached_result():
+        cached_result = lookup_render_cache(
+            deck_code,
+            deck_name,
+            scope="api",
+            image_style=image_style,
+        )
+        source = "render_cache"
+        if cached_result is None and image_style == "classic":
+            # The old generated-decks cache predates render styles and is safe
+            # only for the classic renderer.
+            cached_result = find_cached(deck_code, deck_name)
+            source = "legacy"
+        if not cached_result:
+            return None, source
+        filepath = cached_result.get("artifact_path") or os.path.join(
+            GENERATED_DIR,
+            cached_result["filename"],
+        )
+        if not os.path.isfile(filepath):
+            return None, source
+        return cached_result, source
+
+    def cached_response(cached_result, source):
+        layer = cached_result.get("cache_layer")
+        cache_status = f"{source}_{layer}_hit" if layer else f"{source}_hit"
+        timings["cache_status"] = cache_status
+        timings["handler_total_ms"] = _request_latency_ms(handler_started)
+        emit_render_timing(
+            source="web_api",
+            result="ok",
+            timings=timings,
+            deck_code=deck_code,
+            trace_id=trace_id,
+        )
+        timings["_telemetry_emitted"] = True
+        return _api_json_response(
+            {
                 "success": True,
                 "cached": True,
-                "deck_code": cached["deck_code"],
-                "deck_name": cached.get("deck_name"),
-                "cost": cached["cost"],
-                "filename": cached["filename"],
-                **_generated_image_urls(cached["filename"]),
-            })
+                "cache_layer": layer or source,
+                "image_style": image_style,
+                "deck_code": cached_result["deck_code"],
+                "deck_name": cached_result.get("deck_name"),
+                "cost": cached_result["cost"],
+                "deck_class": cached_result.get("deck_class"),
+                "deck_mode": cached_result.get("deck_mode"),
+                "filename": cached_result["filename"],
+                **_generated_image_urls(cached_result["filename"]),
+            },
+            started_ns=handler_started,
+            cacheable=True,
+        )
 
+    started = time.perf_counter_ns()
+    cached, cache_source = lookup_cached_result()
+    timings["cache_lookup_ms"] = round((time.perf_counter_ns() - started) / 1_000_000, 3)
+    if cached:
+        return cached_response(cached, cache_source)
+
+    timings["cache_status"] = "miss"
+    result_status = "error"
+    render_lock = None
     try:
-        image, cost, deck_class_name, deck_mode_name, card_dbf_ids = _run_create_picture(deck_code, deck_name)
+        render_lock = acquire_render_lock(deck_code, deck_name, image_style)
+        if render_lock is not None:
+            # Another worker may have completed the same image while this
+            # request was waiting for the Redis lock.
+            started = time.perf_counter_ns()
+            cached, cache_source = lookup_cached_result()
+            timings["cache_lookup_ms"] += round(
+                (time.perf_counter_ns() - started) / 1_000_000,
+                3,
+            )
+            if cached:
+                result_status = "ok"
+                return cached_response(cached, cache_source)
+
+        image, cost, deck_class_name, deck_mode_name, card_dbf_ids = _run_create_picture(
+            deck_code,
+            deck_name,
+            timings=timings,
+            image_style=image_style,
+        )
 
         if image is None:
-            return jsonify({"success": False, "error": "Failed to generate image. Check deck_code."}), 422
+            result_status = "empty"
+            return _api_json_response(
+                {
+                    "success": False,
+                    "error": "Failed to generate image. Check deck_code.",
+                    "error_code": "RENDER_FAILED",
+                },
+                started_ns=handler_started,
+                status=422,
+            )
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-        filename = f"deck_{timestamp}.jpg"
+        filename = f"deck_{image_style}_{timestamp}.jpg"
         filepath = os.path.join(GENERATED_DIR, filename)
-        image.save(filepath, format="JPEG", quality=92, optimize=True)
+        started = time.perf_counter_ns()
+        image.save(filepath, format="JPEG", quality=90, optimize=False)
+        timings["jpeg_ms"] = round((time.perf_counter_ns() - started) / 1_000_000, 3)
+        started = time.perf_counter_ns()
+        cache_entry = store_render_cache(
+            deck_code=deck_code,
+            deck_name=deck_name,
+            source_path=filepath,
+            cost=cost,
+            deck_class=deck_class_name,
+            deck_mode=deck_mode_name,
+            card_dbf_ids=card_dbf_ids,
+            image_style=image_style,
+        )
+        timings["cache_store_ms"] = round((time.perf_counter_ns() - started) / 1_000_000, 3)
+        timings["cache_store_result"] = "stored" if cache_entry else "disabled_or_miss"
+        started = time.perf_counter_ns()
         gen_id = add_generated(
             deck_code,
             deck_name,
             cost,
             filename,
-            source="api",
+            source=f"api:{image_style}",
             deck_class=deck_class_name,
             deck_mode=deck_mode_name,
         )
         add_deck_cards(gen_id, card_dbf_ids)
+        timings["db_ms"] = round((time.perf_counter_ns() - started) / 1_000_000, 3)
 
-        return jsonify({
-            "success": True,
-            "cached": False,
-            "deck_code": deck_code,
-            "deck_name": deck_name,
-            "cost": cost,
-            "deck_class": deck_class_name,
-            "deck_mode": deck_mode_name,
-            "filename": filename,
-            **_generated_image_urls(filename),
-        })
+        result_status = "ok"
+        return _api_json_response(
+            {
+                "success": True,
+                "cached": False,
+                "cache_layer": None,
+                "image_style": image_style,
+                "deck_code": deck_code,
+                "deck_name": deck_name,
+                "cost": cost,
+                "deck_class": deck_class_name,
+                "deck_mode": deck_mode_name,
+                "filename": filename,
+                **_generated_image_urls(filename),
+            },
+            started_ns=handler_started,
+        )
 
     except asyncio.TimeoutError:
-        return jsonify({"success": False, "error": "Generation timed out. Try again later."}), 504
+        result_status = "timeout"
+        return _api_json_response(
+            {
+                "success": False,
+                "error": "Generation timed out. Try again later.",
+                "error_code": "RENDER_TIMEOUT",
+            },
+            started_ns=handler_started,
+            status=504,
+        )
     except Exception as e:
-        return jsonify({"success": False, "error": str(e)[:300]}), 500
+        timings.setdefault("error_type", type(e).__name__)
+        return _api_json_response(
+            {
+                "success": False,
+                "error": str(e)[:300],
+                "error_code": "INTERNAL_ERROR",
+            },
+            started_ns=handler_started,
+            status=500,
+        )
+    finally:
+        release_render_lock(render_lock)
+        timings["handler_total_ms"] = round(
+            (time.perf_counter_ns() - handler_started) / 1_000_000,
+            3,
+        )
+        if not timings.get("_telemetry_emitted"):
+            emit_render_timing(
+                source="web_api",
+                result=result_status,
+                timings=timings,
+                deck_code=deck_code,
+                trace_id=trace_id,
+            )
 
 
 @app.route("/deckview-api/v1/publish", methods=["POST"])

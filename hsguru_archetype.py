@@ -102,6 +102,11 @@ def _get_cached(deck_code: str) -> Optional[Dict[str, Any]]:
     return None
 
 
+def get_cached_archetype(deck_code: str) -> Optional[Dict[str, Any]]:
+    """Return cached recognition only; never perform network or browser I/O."""
+    return _get_cached(str(deck_code or "").strip())
+
+
 def _put_cached(deck_code: str, result: Dict[str, Any]) -> None:
     if HSGURU_ARCHETYPE_CACHE_HOURS <= 0 or not result.get("success"):
         return
@@ -128,13 +133,20 @@ def _get_cloudscraper():
     return _SCRAPER
 
 
-def _fetch_with_cloudscraper(deck_code: str) -> Dict[str, Any]:
+def _fetch_with_cloudscraper(
+    deck_code: str,
+    network_timeout: float | None = None,
+) -> Dict[str, Any]:
     url = _deck_info_url(deck_code)
     scraper = _get_cloudscraper()
     session = scraper or requests
     response = session.get(
         url,
-        timeout=HSGURU_ARCHETYPE_TIMEOUT,
+        timeout=(
+            HSGURU_ARCHETYPE_TIMEOUT
+            if network_timeout is None
+            else max(0.1, float(network_timeout))
+        ),
         headers={
             "Accept": "application/json,text/plain,*/*",
             "User-Agent": (
@@ -248,7 +260,12 @@ def _normalize_result(deck_code: str, data: Dict[str, Any], source: str) -> Dict
     }
 
 
-def recognize_archetype(deck_code: str, *, use_cache: bool = True) -> Dict[str, Any]:
+def recognize_archetype(
+    deck_code: str,
+    *,
+    use_cache: bool = True,
+    network_timeout: float | None = None,
+) -> Dict[str, Any]:
     """Return a public-safe archetype recognition result for a Hearthstone deck code."""
     code = str(deck_code or "").strip()
     if not code:
@@ -274,7 +291,11 @@ def recognize_archetype(deck_code: str, *, use_cache: bool = True) -> Dict[str, 
     errors: list[str] = []
     for source, fetcher in (("hsguru_cloudscraper", _fetch_with_cloudscraper),):
         try:
-            result = _normalize_result(code, fetcher(code), source)
+            result = _normalize_result(
+                code,
+                fetcher(code, network_timeout=network_timeout),
+                source,
+            )
             if result.get("success"):
                 _put_cached(code, result)
             return result

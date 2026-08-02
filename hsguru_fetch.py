@@ -6,13 +6,16 @@
 import csv
 import io
 import asyncio
+import fcntl
 import json
 import os
 import re
 import time
+from contextlib import contextmanager
 from http.cookies import SimpleCookie
-from urllib.parse import urlparse
+from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 from datetime import datetime
+from datetime import timezone
 from datetime import timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -24,13 +27,22 @@ from config import (
     HSGURU_BROWSER_TIMEOUT,
     HSGURU_CF_CLEARANCE,
     HSGURU_COOKIES,
+    HSGURU_FETCH_BACKOFF_SECONDS,
+    HSGURU_FETCH_RETRIES,
     HSGURU_FALLBACK_URLS,
     HSGURU_FETCH_TIMEOUT,
+    HSGURU_LOCK_PATH,
+    HSGURU_MIN_GAMES,
+    HSGURU_MIN_PARSED_DECKS,
     HSGURU_PUBLISH_BATCH_LIMIT,
     HSGURU_PROXY_URLS,
     HSGURU_SEEN_PATH,
+    HSGURU_STATUS_PATH,
+    HSGURU_STREAMER_OFFSETS,
+    HSGURU_STREAMER_PAGE_LIMIT,
     HSGURU_USER_AGENT,
     HSGURU_URL,
+    HS_DATA_API_ENABLED,
 )
 
 try:
@@ -65,6 +77,12 @@ from bs4 import BeautifulSoup
 
 from framework.http_session import get_http_session
 
+try:
+    from hs_data_api import HSDataAPIError, get_streamer_decks as get_data_api_streamer_decks
+except Exception:
+    HSDataAPIError = RuntimeError
+    get_data_api_streamer_decks = None
+
 FORMAT_MAP = {
     "Standard": "Стандарт",
     "Wild": "Вольный",
@@ -72,7 +90,7 @@ FORMAT_MAP = {
     "Twist": "Потасовка",
 }
 
-MIN_GAMES = 20
+MIN_GAMES = HSGURU_MIN_GAMES
 
 HSGURU_HEADERS = {
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
@@ -105,6 +123,56 @@ def _seen_path() -> Path:
     p = Path(HSGURU_SEEN_PATH)
     p.parent.mkdir(parents=True, exist_ok=True)
     return p
+
+
+def _status_path() -> Path:
+    p = Path(HSGURU_STATUS_PATH)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    return p
+
+
+def _lock_path() -> Path:
+    p = Path(HSGURU_LOCK_PATH)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    return p
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+@contextmanager
+def _exclusive_lock(path: Path):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "a+", encoding="utf-8") as lock_file:
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+
+
+def _atomic_write_json(path: Path, payload: Dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    with open(tmp_path, "w", encoding="utf-8") as f:
+        json.dump(payload, f, ensure_ascii=False, indent=2)
+        f.write("\n")
+        f.flush()
+        os.fsync(f.fileno())
+    try:
+        os.chmod(tmp_path, 0o664)
+    except OSError:
+        pass
+    os.replace(tmp_path, path)
+
+
+def _write_status(payload: Dict[str, Any]) -> None:
+    try:
+        payload.setdefault("created_at", _now_iso())
+        _atomic_write_json(_status_path(), payload)
+    except Exception as e:
+        print(f"[HSGuru] status write failed: {e}")
 
 
 def load_seen() -> Dict[str, Any]:
@@ -147,8 +215,7 @@ def save_seen(seen_data: Dict[str, Any]) -> None:
         },
         "last_published_format": seen_data.get("last_published_format", ""),
     }
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+    _atomic_write_json(path, data)
 
 
 def _response_text_or_error(response: Any, source: str) -> str:
@@ -197,14 +264,38 @@ def _headers() -> Dict[str, str]:
 
 
 def _cookie_header() -> str:
-    cookies = []
+    cookie_values = []
     if HSGURU_COOKIES:
-        cookies.append(HSGURU_COOKIES)
+        cookie_values.append(HSGURU_COOKIES)
     if HSGURU_CF_CLEARANCE and "cf_clearance=" not in HSGURU_CF_CLEARANCE:
-        cookies.append(f"cf_clearance={HSGURU_CF_CLEARANCE}")
+        cookie_values.append(f"cf_clearance={HSGURU_CF_CLEARANCE}")
     elif HSGURU_CF_CLEARANCE:
-        cookies.append(HSGURU_CF_CLEARANCE)
-    return "; ".join(c.strip().strip(";") for c in cookies if c.strip())
+        cookie_values.append(HSGURU_CF_CLEARANCE)
+
+    cookies: List[str] = []
+    for cookie_header in cookie_values:
+        for part in cookie_header.split(";"):
+            part = part.strip().strip(";")
+            if not part or "=" not in part:
+                continue
+            name, value = part.split("=", 1)
+            name = name.strip()
+            if name in {"cf_clearance", "__cf_bm"} and _looks_like_expired_cf_cookie(value):
+                continue
+            cookies.append(f"{name}={value.strip()}")
+    return "; ".join(cookies)
+
+
+def _looks_like_expired_cf_cookie(value: str) -> bool:
+    """Best-effort guard against stale Cloudflare cookies saved in .env."""
+    match = re.search(r"-(\d{10})[.-]", value or "")
+    if not match:
+        return False
+    try:
+        issued_at = int(match.group(1))
+    except ValueError:
+        return False
+    return issued_at < int(time.time()) - 20 * 60 * 60
 
 
 def _cookie_pairs() -> Dict[str, str]:
@@ -272,6 +363,33 @@ def _candidate_urls() -> List[str]:
     return urls
 
 
+def _with_query_params(url: str, params: Dict[str, Any]) -> str:
+    parsed = urlparse(url)
+    query = dict(parse_qsl(parsed.query, keep_blank_values=True))
+    for key, value in params.items():
+        if value is None or value == "":
+            query.pop(key, None)
+        else:
+            query[key] = str(value)
+    return urlunparse(parsed._replace(query=urlencode(query)))
+
+
+def _streamer_page_urls(url: str) -> List[str]:
+    if "streamer-decks" not in url:
+        return [url]
+
+    offsets = HSGURU_STREAMER_OFFSETS or (0,)
+    urls: List[str] = []
+    for offset in offsets:
+        params: Dict[str, Any] = {"limit": HSGURU_STREAMER_PAGE_LIMIT}
+        if int(offset) > 0:
+            params["offset"] = int(offset)
+        candidate = _with_query_params(url, params)
+        if candidate not in urls:
+            urls.append(candidate)
+    return urls
+
+
 def _fetch_with_cloudscraper(url: str) -> str:
     if not _has_cloudscraper:
         raise HSGuruFetchError("cloudscraper is not installed")
@@ -334,6 +452,10 @@ def _fetch_with_drissionpage(url: str) -> str:
         options = ChromiumOptions()
         if HSGURU_BROWSER_PATH and os.path.exists(HSGURU_BROWSER_PATH):
             options.set_browser_path(HSGURU_BROWSER_PATH)
+        try:
+            options.auto_port()
+        except Exception:
+            pass
         options.headless(True)
         options.no_imgs()
         for arg in (
@@ -370,7 +492,7 @@ def _fetch_with_drissionpage(url: str) -> str:
     raise HSGuruFetchError("; ".join(errors))
 
 
-def fetch_html() -> str:
+def _fetch_single_html(url: str) -> str:
     errors = []
     methods = [
         ("crawlee", _fetch_with_crawlee),
@@ -380,19 +502,53 @@ def fetch_html() -> str:
     if HSGURU_BROWSER_FALLBACK:
         methods.append(("drissionpage", _fetch_with_drissionpage))
 
-    for url in _candidate_urls():
+    for attempt in range(1, HSGURU_FETCH_RETRIES + 1):
         for name, fetcher in methods:
             try:
                 html = fetcher(url)
                 if not _looks_like_streamer_decks_html(html):
                     raise HSGuruFetchError(f"{name} returned HTML without streamer deck markers")
-                print(f"[HSGuru] fetch ok via {name}, url={url}, html_len={len(html)}")
+                print(
+                    f"[HSGuru] fetch ok via {name}, attempt={attempt}, "
+                    f"url={url}, html_len={len(html)}"
+                )
                 return html
             except Exception as e:
-                errors.append(f"{url} {name}: {e}")
-                print(f"[HSGuru] fetch failed via {name}, url={url}: {e}")
+                message = f"{url} {name} attempt={attempt}: {e}"
+                errors.append(message)
+                print(f"[HSGuru] fetch failed via {name}, attempt={attempt}, url={url}: {e}")
+        if attempt < HSGURU_FETCH_RETRIES and HSGURU_FETCH_BACKOFF_SECONDS > 0:
+            time.sleep(HSGURU_FETCH_BACKOFF_SECONDS * attempt)
 
     raise HSGuruFetchError("; ".join(errors) or "all HSGuru fetchers failed")
+
+
+def fetch_html() -> str:
+    errors = []
+    for url in _candidate_urls():
+        try:
+            return _fetch_single_html(url)
+        except Exception as e:
+            errors.append(str(e))
+    raise HSGuruFetchError("; ".join(errors) or "all HSGuru fetchers failed")
+
+
+def fetch_streamer_pages() -> List[str]:
+    html_pages: List[str] = []
+    errors: List[str] = []
+
+    for base_url in _candidate_urls():
+        for url in _streamer_page_urls(base_url):
+            try:
+                html_pages.append(_fetch_single_html(url))
+            except Exception as e:
+                errors.append(f"{url}: {e}")
+                print(f"[HSGuru] page fetch failed, url={url}: {e}")
+
+    if not html_pages:
+        raise HSGuruFetchError("; ".join(errors) or "all HSGuru page fetchers failed")
+
+    return html_pages
 
 
 def _extract_legend_rank(peak_value: str) -> str:
@@ -698,6 +854,34 @@ def parse_decks(html: str, archetypes: Optional[Dict[str, str]] = None) -> List[
     return decks
 
 
+def _deck_quality_score(deck: Dict[str, Any]) -> tuple[int, int, int, int]:
+    wins = int(deck.get("wins") or 0)
+    losses = int(deck.get("losses") or 0)
+    total = int(deck.get("total_games") or wins + losses)
+    filled_stats = 1 if wins or losses else 0
+    filled_streamer = 1 if (deck.get("streamer") or "").strip() else 0
+    filled_format = 1 if (deck.get("format") or "").strip() else 0
+    return (total, filled_stats, filled_streamer, filled_format)
+
+
+def dedupe_decks(decks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Deduplicate by deck code and keep the row with the richest stats."""
+    ordered_codes: List[str] = []
+    by_code: Dict[str, Dict[str, Any]] = {}
+    for deck in decks:
+        code = (deck.get("deck_code") or "").strip()
+        if not code:
+            continue
+        deck["deck_code"] = code
+        if code not in by_code:
+            ordered_codes.append(code)
+            by_code[code] = deck
+            continue
+        if _deck_quality_score(deck) > _deck_quality_score(by_code[code]):
+            by_code[code] = deck
+    return [by_code[code] for code in ordered_codes]
+
+
 def is_publishable_deck(deck: Dict[str, Any]) -> bool:
     """Строгий фильтр ленты: больше 20 игр и положительный винрейт."""
     wins = int(deck.get("wins") or 0)
@@ -769,12 +953,113 @@ def payloads_from_html(
 
 def get_new_decks(limit: Optional[int] = None) -> List[Dict[str, Any]]:
     """Возвращает все новые HSGuru-колоды для ленты: games > 20 и wins > losses."""
+    started = time.time()
+    requested_pages = sum(len(_streamer_page_urls(base_url)) for base_url in _candidate_urls())
+
+    if HS_DATA_API_ENABLED and get_data_api_streamer_decks is not None:
+        try:
+            api_decks, api_stats = get_data_api_streamer_decks()
+            archetypes = load_archetypes()
+            for deck in api_decks:
+                original_name = deck.get("deck_name_en") or deck.get("deck_name") or "Deck"
+                deck["deck_name_source"] = original_name
+                deck["deck_name"] = translate_deck_name(str(original_name), archetypes) or str(original_name)
+
+            decks = dedupe_decks(api_decks)
+            if not decks:
+                raise HSDataAPIError("api returned no streamer decks")
+
+            payloads = payloads_from_decks(decks, limit=limit)
+            publishable_all = payloads_from_decks(decks, limit=0, include_seen=True)
+            seen_data = load_seen()
+            status = {
+                "ok": True,
+                "stage": "complete",
+                "source": "hs_data_api",
+                "api_stats": api_stats,
+                "parsed_raw": len(api_decks),
+                "parsed_unique": len(decks),
+                "publishable_all": len(publishable_all),
+                "publishable_new": len(payloads),
+                "seen_codes": len(seen_data.get("codes", set())),
+                "duration_sec": round(time.time() - started, 3),
+            }
+            _write_status(status)
+            print(
+                f"[HSGuru] source=hs_data_api parsed_unique={len(decks)} "
+                f"publishable_all={len(publishable_all)} publishable_new={len(payloads)}"
+            )
+            return payloads
+        except Exception as e:
+            print(f"[HSGuru] HS Data API fallback to direct fetch: {e}")
+
     try:
-        html = fetch_html()
+        pages = fetch_streamer_pages()
     except Exception as e:
         print(f"[HSGuru] fetch error: {e}")
+        _write_status({
+            "ok": False,
+            "stage": "fetch",
+            "error": str(e)[:1000],
+            "requested_pages": requested_pages,
+            "duration_sec": round(time.time() - started, 3),
+        })
         return []
-    return payloads_from_html(html, limit=limit)
+
+    archetypes = load_archetypes()
+    raw_decks: List[Dict[str, Any]] = []
+    page_stats: List[Dict[str, Any]] = []
+    for index, html in enumerate(pages, 1):
+        page_decks = parse_decks(html, archetypes)
+        raw_decks.extend(page_decks)
+        page_stats.append({
+            "page": index,
+            "html_length": len(html),
+            "parsed_decks": len(page_decks),
+        })
+
+    decks = dedupe_decks(raw_decks)
+    if HSGURU_MIN_PARSED_DECKS and len(decks) < HSGURU_MIN_PARSED_DECKS:
+        message = (
+            f"parsed_unique={len(decks)} below minimum "
+            f"{HSGURU_MIN_PARSED_DECKS}; parser output considered unsafe"
+        )
+        print(f"[HSGuru] {message}")
+        _write_status({
+            "ok": False,
+            "stage": "parse",
+            "error": message,
+            "requested_pages": requested_pages,
+            "pages_fetched": len(pages),
+            "page_stats": page_stats,
+            "parsed_raw": len(raw_decks),
+            "parsed_unique": len(decks),
+            "duration_sec": round(time.time() - started, 3),
+        })
+        return []
+
+    payloads = payloads_from_decks(decks, limit=limit)
+    publishable_all = payloads_from_decks(decks, limit=0, include_seen=True)
+    seen_data = load_seen()
+    status = {
+        "ok": True,
+        "stage": "complete",
+        "requested_pages": requested_pages,
+        "pages_fetched": len(pages),
+        "page_stats": page_stats,
+        "parsed_raw": len(raw_decks),
+        "parsed_unique": len(decks),
+        "publishable_all": len(publishable_all),
+        "publishable_new": len(payloads),
+        "seen_codes": len(seen_data.get("codes", set())),
+        "duration_sec": round(time.time() - started, 3),
+    }
+    _write_status(status)
+    print(
+        f"[HSGuru] pages={len(pages)} parsed_unique={len(decks)} "
+        f"publishable_all={len(publishable_all)} publishable_new={len(payloads)}"
+    )
+    return payloads
 
 
 def get_one_new_deck() -> Optional[Dict[str, Any]]:
@@ -788,13 +1073,14 @@ def get_one_new_deck() -> Optional[Dict[str, Any]]:
 
 def mark_deck_published(payload: Dict[str, Any]) -> None:
     """Сохранить колоду как опубликованную (вызвать после успешной публикации)."""
-    seen_data = load_seen()
-    code = payload["deck_code"]
-    seen_data["codes"].add(code)
-    norm = payload.get("_normalized_format", "")
-    seen_data["decks"][code] = {
-        "published_at": datetime.now().isoformat(),
-        "format": norm,
-    }
-    seen_data["last_published_format"] = norm
-    save_seen(seen_data)
+    with _exclusive_lock(_lock_path()):
+        seen_data = load_seen()
+        code = payload["deck_code"]
+        seen_data["codes"].add(code)
+        norm = payload.get("_normalized_format", "")
+        seen_data["decks"][code] = {
+            "published_at": datetime.now().isoformat(),
+            "format": norm,
+        }
+        seen_data["last_published_format"] = norm
+        save_seen(seen_data)

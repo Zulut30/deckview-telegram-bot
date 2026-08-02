@@ -1,0 +1,19 @@
+[Unit]
+Description=Refresh Deckview local Kolodahs card snapshot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/Deckview
+Environment="PATH=/home/ubuntu/Deckview/.venv/bin:/usr/bin"
+EnvironmentFile=-/home/ubuntu/Deckview/.env
+ExecStart=/home/ubuntu/Deckview/.venv/bin/python -m tools.refresh_card_catalog_snapshot
+Nice=10
+IOSchedulingClass=idle
+UMask=0027
+
+[Install]
+WantedBy=multi-user.target

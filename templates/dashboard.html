@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Дашборд — Deckview Bot</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <style>
+        :root {
+            --bg: #0f1419;
+            --card: #1a2332;
+            --text: #e6edf3;
+            --muted: #8b949e;
+            --accent: #58a6ff;
+            --success: #3fb950;
+            --warning: #d29922;
+            --danger: #f85149;
+        }
+        * { box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            margin: 0;
+            padding: 1rem;
+            line-height: 1.5;
+        }
+        .container { max-width: 1200px; margin: 0 auto; }
+        h1 { font-size: 1.5rem; margin-bottom: 0.5rem; }
+        .subtitle { color: var(--muted); font-size: 0.9rem; margin-bottom: 1.5rem; }
+        .cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+        .card {
+            background: var(--card);
+            border-radius: 8px;
+            padding: 1rem;
+            border: 1px solid rgba(255,255,255,0.06);
+        }
+        .card .value { font-size: 1.75rem; font-weight: 700; color: var(--accent); }
+        .card .label { font-size: 0.8rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+        .charts {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        @media (max-width: 768px) { .charts { grid-template-columns: 1fr; } }
+        .chart-wrap {
+            background: var(--card);
+            border-radius: 8px;
+            padding: 1rem;
+            border: 1px solid rgba(255,255,255,0.06);
+            height: 280px;
+        }
+        .chart-wrap h3 { font-size: 0.95rem; margin: 0 0 0.5rem 0; color: var(--muted); }
+        .logs-section {
+            background: var(--card);
+            border-radius: 8px;
+            border: 1px solid rgba(255,255,255,0.06);
+            overflow: hidden;
+        }
+        .logs-section h3 { padding: 1rem 1rem 0; margin: 0; font-size: 0.95rem; color: var(--muted); }
+        .logs-toolbar {
+            padding: 0.5rem 1rem;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            align-items: center;
+        }
+        .logs-toolbar select, .logs-toolbar button {
+            background: var(--bg);
+            color: var(--text);
+            border: 1px solid var(--muted);
+            border-radius: 6px;
+            padding: 0.4rem 0.6rem;
+            font-size: 0.85rem;
+        }
+        .logs-toolbar button { cursor: pointer; }
+        .logs-toolbar button:hover { background: var(--accent); border-color: var(--accent); color: #fff; }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.85rem;
+        }
+        th, td { padding: 0.5rem 1rem; text-align: left; border-bottom: 1px solid rgba(255,255,255,0.06); }
+        th { color: var(--muted); font-weight: 600; }
+        .event-type { font-weight: 600; }
+        .event-type.deck_code { color: var(--success); }
+        .event-type.card { color: var(--accent); }
+        .event-type.findwith { color: #a371f7; }
+        .event-type.publish { color: var(--warning); }
+        .event-type.error { color: var(--danger); }
+        .payload-cell { max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
+        .empty-logs { padding: 2rem; text-align: center; color: var(--muted); }
+        .auth-warn { background: var(--warning); color: #000; padding: 0.5rem 1rem; border-radius: 6px; margin-bottom: 1rem; font-size: 0.9rem; }
+        .auth-warn a { color: #000; text-decoration: underline; }
+    </style>
+    <link rel="stylesheet" href="{{ url_for('static', filename='admin-redesign.css') }}"/>
+    <link rel="stylesheet" href="{{ url_for('static', filename='dashboard-redesign.css') }}?v=20260612-r3f5"/>
+</head>
+<body class="dv-dashboard" data-theme="dark">
+    <div class="dash-grid-bg" aria-hidden="true"></div>
+    <div class="container">
+        <header class="dash-hero">
+            <div class="dash-hero-copy">
+                <span class="dash-eyebrow">Deckview Control Room</span>
+                <h1>Дашборд Deckview Bot</h1>
+                <p class="subtitle">Живая статистика бота, графики активности и свежие события в одной аккуратной панели.</p>
+                <div class="dash-actions">
+                    <button class="dash-btn primary" type="button" id="btnRefreshTop">Обновить данные</button>
+                    <button class="dash-btn" type="button" id="themeToggle" aria-pressed="true">Светлая тема</button>
+                </div>
+            </div>
+            <div class="dash-visual" aria-hidden="true">
+                <div id="dashboard-three-root"></div>
+                <div class="dash-visual-fallback">
+                    <div class="dash-orbit"></div>
+                </div>
+            </div>
+        </header>
+
+        {% if key_required %}
+        <div class="auth-warn">
+            Доступ защищён ключом. Для повторного входа сохраните ссылку с параметром <code>?key=...</code> (значение из .env DASHBOARD_SECRET).
+        </div>
+        {% endif %}
+
+        <div class="cards">
+            <div class="card total">
+                <div class="label">Событий за период</div>
+                <div class="value" id="stat-total">—</div>
+                <div class="micro">Суммарная активность за 7 дней</div>
+            </div>
+            <div class="card deck">
+                <div class="label">Колоды</div>
+                <div class="value" id="stat-deck">—</div>
+                <div class="micro">Распознанные deck codes</div>
+            </div>
+            <div class="card card-event">
+                <div class="label">Карты</div>
+                <div class="value" id="stat-card">—</div>
+                <div class="micro">Запросы команды /card</div>
+            </div>
+            <div class="card findwith">
+                <div class="label">Findwith</div>
+                <div class="value" id="stat-findwith">—</div>
+                <div class="micro">Поиск колод с картой</div>
+            </div>
+            <div class="card publish">
+                <div class="label">Публикации</div>
+                <div class="value" id="stat-publish">—</div>
+                <div class="micro">Отправки в каналы</div>
+            </div>
+            <div class="card errors">
+                <div class="label">Ошибки</div>
+                <div class="value" id="stat-errors">—</div>
+                <div class="micro">События с ошибками</div>
+            </div>
+        </div>
+
+        <div class="charts">
+            <div class="chart-wrap">
+                <h3>Активность по дням</h3>
+                <p class="chart-sub">Ритм входящих событий за последние 7 дней</p>
+                <div class="chart-canvas-wrap">
+                    <canvas id="chartActivity"></canvas>
+                </div>
+            </div>
+            <div class="chart-wrap">
+                <h3>События по типам</h3>
+                <p class="chart-sub">Доля команд и системных событий</p>
+                <div class="chart-canvas-wrap">
+                    <canvas id="chartTypes"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <div class="logs-section">
+            <div class="logs-head">
+                <div>
+                    <h3>Логи событий</h3>
+                    <p class="chart-sub">Последние действия пользователей и системные ответы</p>
+                </div>
+                <div class="logs-toolbar">
+                    <select id="filterType" aria-label="Фильтр событий">
+                        <option value="">Все события</option>
+                        <option value="deck_code">Колоды</option>
+                        <option value="card">Карты</option>
+                        <option value="findwith">Findwith</option>
+                        <option value="publish">Публикации</option>
+                        <option value="error">Ошибки</option>
+                    </select>
+                    <button type="button" id="btnRefresh">Обновить</button>
+                    <span id="logsCount"></span>
+                </div>
+            </div>
+            <div class="table-scroll">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Время</th>
+                            <th>Тип</th>
+                            <th>Чат</th>
+                            <th>Данные</th>
+                        </tr>
+                    </thead>
+                    <tbody id="logsBody"></tbody>
+                </table>
+            </div>
+            <div class="empty-logs" id="emptyLogs" style="display:none;">Нет событий за выбранный период</div>
+        </div>
+    </div>
+
+    <script type="importmap">
+        {
+          "imports": {
+            "react": "https://esm.sh/react@18.2.0",
+            "react/jsx-runtime": "https://esm.sh/react@18.2.0/jsx-runtime",
+            "react/jsx-dev-runtime": "https://esm.sh/react@18.2.0/jsx-dev-runtime",
+            "react-dom": "https://esm.sh/react-dom@18.2.0",
+            "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+            "three": "https://esm.sh/three@0.164.1",
+            "@react-three/fiber": "https://esm.sh/@react-three/fiber@8.16.8?external=react,react-dom,three",
+            "gsap": "https://esm.sh/gsap@3.12.5",
+            "animejs": "https://esm.sh/animejs@3.2.2/lib/anime.es.js",
+            "framer-motion": "https://esm.sh/framer-motion@11.0.8?external=react,react-dom"
+          }
+        }
+    </script>
+    <script type="module" src="{{ url_for('static', filename='dashboard-effects.js') }}?v=20260612-r3f5"></script>
+
+    <script>
+        const DAYS = 7;
+        const API_PREFIX = {{ ((request.script_root or "") ~ "/dashboard") | tojson }};
+        const AUTH_KEY = {{ (dashboard_key or "") | tojson }};
+        const THEME_KEY = 'deckview-dashboard-theme';
+
+        function authParams() {
+            const p = {};
+            if (AUTH_KEY) p.key = AUTH_KEY;
+            return new URLSearchParams(p).toString();
+        }
+
+        let chartActivity = null;
+        let chartTypes = null;
+        let lastStatsData = null;
+
+        function dashVar(name, fallback) {
+            const value = getComputedStyle(document.body).getPropertyValue(name).trim();
+            return value || fallback;
+        }
+
+        function alphaColor(color, alpha) {
+            if (!color) return 'rgba(96, 165, 250, ' + alpha + ')';
+            if (color.startsWith('#') && (color.length === 7 || color.length === 4)) {
+                const hex = color.length === 4
+                    ? color.slice(1).split('').map(ch => ch + ch).join('')
+                    : color.slice(1);
+                const num = parseInt(hex, 16);
+                const r = (num >> 16) & 255;
+                const g = (num >> 8) & 255;
+                const b = num & 255;
+                return 'rgba(' + r + ', ' + g + ', ' + b + ', ' + alpha + ')';
+            }
+            if (color.startsWith('rgb(')) {
+                return color.replace('rgb(', 'rgba(').replace(')', ', ' + alpha + ')');
+            }
+            if (color.startsWith('rgba(')) {
+                return color.replace(/rgba\(([^)]+),\s*[\d.]+\)/, 'rgba($1, ' + alpha + ')');
+            }
+            return color;
+        }
+
+        function setTheme(theme) {
+            const normalized = theme === 'light' ? 'light' : 'dark';
+            document.body.dataset.theme = normalized;
+            localStorage.setItem(THEME_KEY, normalized);
+            const btn = document.getElementById('themeToggle');
+            if (btn) {
+                btn.textContent = normalized === 'dark' ? 'Светлая тема' : 'Темная тема';
+                btn.setAttribute('aria-pressed', normalized === 'dark' ? 'true' : 'false');
+            }
+            if (lastStatsData) initCharts(lastStatsData);
+            window.dispatchEvent(new CustomEvent('dashboard:theme-changed', { detail: { theme: normalized } }));
+        }
+
+        function initTheme() {
+            const urlTheme = new URLSearchParams(window.location.search).get('theme');
+            const saved = localStorage.getItem(THEME_KEY);
+            const preferred = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+            setTheme(urlTheme || saved || preferred);
+        }
+
+        function escapeHtml(value) {
+            return String(value ?? '—')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
+        async function fetchStats() {
+            const q = authParams();
+            const r = await fetch(API_PREFIX + '/api/stats?days=' + DAYS + (q ? '&' + q : ''));
+            if (!r.ok) throw new Error(r.statusText);
+            return r.json();
+        }
+
+        async function fetchLogs(limit, offset, type) {
+            let url = API_PREFIX + '/api/logs?limit=' + (limit || 50) + '&offset=' + (offset || 0);
+            if (type) url += '&type=' + encodeURIComponent(type);
+            const q = authParams();
+            if (q) url += (url.includes('?') ? '&' : '?') + q;
+            const r = await fetch(url);
+            if (!r.ok) throw new Error(r.statusText);
+            return r.json();
+        }
+
+        function renderStats(data) {
+            document.getElementById('stat-total').textContent = data.total_events;
+            const by = data.chart && data.chart.by_type_labels ? data.chart.by_type_labels.reduce((o, k, i) => {
+                o[k] = data.chart.by_type_values[i];
+                return o;
+            }, {}) : {};
+            document.getElementById('stat-deck').textContent = by.deck_code || 0;
+            document.getElementById('stat-card').textContent = by.card || 0;
+            document.getElementById('stat-findwith').textContent = by.findwith || 0;
+            document.getElementById('stat-publish').textContent = by.publish || 0;
+            document.getElementById('stat-errors').textContent = by.error || 0;
+            window.dispatchEvent(new CustomEvent('dashboard:stats-rendered', { detail: data }));
+        }
+
+        function initCharts(data) {
+            const labels = data.chart && data.chart.labels ? data.chart.labels : [];
+            const totals = data.chart && data.chart.totals ? data.chart.totals : [];
+            const typeLabels = data.chart && data.chart.by_type_labels ? data.chart.by_type_labels : [];
+            const typeValues = data.chart && data.chart.by_type_values ? data.chart.by_type_values : [];
+            const chartText = dashVar('--dash-muted', '#8b949e');
+            const chartGrid = dashVar('--dash-chart-grid', 'rgba(148, 163, 184, 0.16)');
+            const chartPanel = dashVar('--dash-panel-solid', '#121826');
+            const chartBlue = dashVar('--dash-blue', '#60a5fa');
+            const chartGreen = dashVar('--dash-green', '#34d399');
+            const chartCyan = dashVar('--dash-cyan', '#22d3ee');
+            const chartViolet = dashVar('--dash-violet', '#a78bfa');
+            const chartAmber = dashVar('--dash-amber', '#fbbf24');
+            const chartRed = dashVar('--dash-red', '#fb7185');
+            const textColor = dashVar('--dash-text', '#eef2ff');
+            const activityCanvas = document.getElementById('chartActivity');
+            const activityCtx = activityCanvas.getContext('2d');
+            const gradient = activityCtx.createLinearGradient(0, 0, 0, 250);
+            gradient.addColorStop(0, alphaColor(chartBlue, 0.26));
+            gradient.addColorStop(1, alphaColor(chartBlue, 0));
+
+            if (chartActivity) chartActivity.destroy();
+            chartActivity = new Chart(activityCanvas, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Событий',
+                        data: totals,
+                        borderColor: chartBlue,
+                        backgroundColor: gradient,
+                        pointBackgroundColor: chartGreen,
+                        pointBorderColor: chartPanel,
+                        pointHoverRadius: 6,
+                        pointRadius: 3,
+                        borderWidth: 3,
+                        fill: true,
+                        tension: 0.34
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { intersect: false, mode: 'index' },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            backgroundColor: chartPanel,
+                            titleColor: textColor,
+                            bodyColor: chartText,
+                            borderColor: chartGrid,
+                            borderWidth: 1,
+                            padding: 12,
+                            displayColors: false
+                        }
+                    },
+                    scales: {
+                        y: { beginAtZero: true, grid: { color: chartGrid }, ticks: { color: chartText, precision: 0 } },
+                        x: { grid: { display: false }, ticks: { color: chartText, maxRotation: 0 } }
+                    }
+                }
+            });
+
+            if (chartTypes) chartTypes.destroy();
+            chartTypes = new Chart(document.getElementById('chartTypes'), {
+                type: 'doughnut',
+                data: {
+                    labels: typeLabels,
+                    datasets: [{
+                        data: typeValues,
+                        backgroundColor: [chartGreen, chartBlue, chartViolet, chartAmber, chartRed, chartCyan],
+                        borderColor: chartPanel,
+                        borderWidth: 4,
+                        hoverOffset: 8
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    cutout: '64%',
+                    plugins: {
+                        legend: {
+                            position: window.innerWidth < 680 ? 'bottom' : 'right',
+                            labels: { color: chartText, boxWidth: 10, boxHeight: 10, usePointStyle: true }
+                        },
+                        tooltip: {
+                            backgroundColor: chartPanel,
+                            titleColor: textColor,
+                            bodyColor: chartText,
+                            borderColor: chartGrid,
+                            borderWidth: 1,
+                            padding: 12
+                        }
+                    }
+                }
+            });
+        }
+
+        function renderLogs(res) {
+            const tbody = document.getElementById('logsBody');
+            const empty = document.getElementById('emptyLogs');
+            document.getElementById('logsCount').textContent = 'Всего: ' + (res.total || 0);
+
+            if (!res.events || res.events.length === 0) {
+                tbody.innerHTML = '';
+                empty.style.display = 'block';
+                return;
+            }
+            empty.style.display = 'none';
+            const labels = {
+                deck_code: 'Колода',
+                card: 'Карта',
+                findwith: 'Findwith',
+                publish: 'Публикация',
+                error: 'Ошибка'
+            };
+            tbody.innerHTML = res.events.map(e => {
+                const time = e.created_at ? e.created_at.replace('T', ' ').slice(0, 19) : '—';
+                const payloadJson = e.payload && typeof e.payload === 'object' ? JSON.stringify(e.payload) : (e.payload || '—');
+                const payloadStr = typeof payloadJson === 'string'
+                    ? payloadJson.slice(0, 120) + (payloadJson.length > 120 ? '…' : '')
+                    : String(payloadJson);
+                const type = e.event_type || '—';
+                const typeClass = String(type).replace(/[^a-z0-9_-]/gi, '');
+                const typeLabel = labels[type] || type;
+                return '<tr>' +
+                    '<td>' + escapeHtml(time) + '</td>' +
+                    '<td><span class="event-type ' + escapeHtml(typeClass) + '">' + escapeHtml(typeLabel) + '</span></td>' +
+                    '<td>' + escapeHtml(e.chat_type || '—') + '</td>' +
+                    '<td class="payload-cell" title="' + escapeHtml(payloadStr) + '">' + escapeHtml(payloadStr || '—') + '</td>' +
+                    '</tr>';
+            }).join('');
+        }
+
+        async function refreshAll() {
+            await Promise.all([loadLogs(), loadStats()]);
+        }
+
+        async function loadStats() {
+            try {
+                const data = await fetchStats();
+                lastStatsData = data;
+                renderStats(data);
+                initCharts(data);
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        async function loadLogs() {
+            const type = document.getElementById('filterType').value;
+            try {
+                const res = await fetchLogs(50, 0, type || undefined);
+                renderLogs(res);
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        document.getElementById('btnRefresh').addEventListener('click', refreshAll);
+        document.getElementById('btnRefreshTop').addEventListener('click', refreshAll);
+        document.getElementById('filterType').addEventListener('change', loadLogs);
+        document.getElementById('themeToggle').addEventListener('click', () => {
+            setTheme(document.body.dataset.theme === 'dark' ? 'light' : 'dark');
+        });
+
+        initTheme();
+        loadStats();
+        loadLogs();
+        setInterval(loadStats, 60000);
+    </script>
+</body>
+</html>

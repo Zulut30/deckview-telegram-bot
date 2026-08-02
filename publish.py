@@ -14,7 +14,6 @@ from aiogram.types import BufferedInputFile, CopyTextButton, InlineKeyboardButto
 from config import (
     CHANNEL_BOT_TOKEN, CHANNEL_ID,
     CLASS_EMOJI_ID_MAP, MODE_EMOJI_ID_MAP, PREMIUM_EMOJI_ID,
-    WP_USE_KOLODAHS_IMAGE,
     normalize_deck_class_name,
 )
 from hsguru_archetype import recognize_archetype
@@ -236,7 +235,7 @@ async def publish_deck(
             player=player,
             dust_cost=dust_cost,
             source_url=source_url or None,
-            image_bytes=None if WP_USE_KOLODAHS_IMAGE else BytesIO(buf.getvalue()),
+            image_bytes=BytesIO(buf.getvalue()),
             deck_class=deck_class,
             deck_mode=deck_mode,
             wins=wins,

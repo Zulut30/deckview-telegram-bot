@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>DeckView — Архетипы</title>
+  <style>
+    /* ── Tokens ──────────────────────────────────────────── */
+    :root{
+      --bg:       #0f1117;
+      --surface:  #1a1d27;
+      --border:   #2a2d3a;
+      --text:     #e4e4e7;
+      --muted:    #8b8d98;
+      --accent:   #3b82f6;
+      --lt:       #22252f;
+      --green:    #22c55e;
+      --red:      #ef4444;
+      --blue:     #3b82f6;
+      --amber:    #f59e0b;
+      --r:        10px;
+      --sh:       0 1px 3px rgba(0,0,0,.3),0 1px 2px rgba(0,0,0,.2);
+      --font:     -apple-system,BlinkMacSystemFont,'Inter','Segoe UI',Roboto,sans-serif;
+    }
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+    body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:14px;line-height:1.55;}
+
+    /* ── Layout ──────────────────────────────────────────── */
+    .shell{display:flex;min-height:100vh;}
+
+    /* ── Sidebar ─────────────────────────────────────────── */
+    .sb{
+      width:220px;min-width:220px;background:var(--surface);
+      border-right:1px solid var(--border);display:flex;flex-direction:column;
+      position:sticky;top:0;height:100vh;overflow-y:auto;
+    }
+    .sb-logo{padding:20px 20px 16px;border-bottom:1px solid var(--border);}
+    .sb-logo .name{font-size:15px;font-weight:700;letter-spacing:-.3px;}
+    .sb-logo .sub{font-size:11px;color:var(--muted);margin-top:2px;}
+    .sb-nav{padding:12px 8px;flex:1;}
+    .nl{font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;
+        color:var(--muted);padding:10px 12px 4px;}
+    .ni{
+      display:flex;align-items:center;gap:9px;padding:8px 12px;border-radius:7px;
+      cursor:pointer;color:var(--muted);font-size:13.5px;font-weight:500;
+      transition:background .12s,color .12s;user-select:none;text-decoration:none;
+    }
+    .ni:hover{background:var(--lt);color:var(--text);}
+    .ni.active{background:var(--accent);color:#fff;}
+    .ni .ic{width:16px;text-align:center;flex-shrink:0;}
+    .sb-foot{padding:14px 20px;border-top:1px solid var(--border);font-size:11px;color:var(--muted);}
+
+    /* ── Topbar ──────────────────────────────────────────── */
+    .topbar{
+      background:var(--surface);border-bottom:1px solid var(--border);
+      padding:14px 28px;display:flex;align-items:center;justify-content:space-between;
+      position:sticky;top:0;z-index:10;
+    }
+    .topbar-title{font-size:15px;font-weight:600;}
+    .btn{
+      padding:6px 14px;border-radius:7px;border:1px solid var(--border);
+      background:var(--surface);color:var(--text);font-size:13px;font-weight:500;
+      cursor:pointer;transition:background .12s;
+    }
+    .btn:hover{background:var(--lt);}
+    .btn-sm{padding:4px 10px;font-size:12px;}
+    .btn-green{background:#14532d;color:#4ade80;border-color:#166534;}
+    .btn-green:hover{background:#166534;}
+    .btn-red{background:#450a0a;color:#f87171;border-color:#7f1d1d;}
+    .btn-red:hover{background:#7f1d1d;}
+    .btn-blue{background:#1e3a5f;color:#60a5fa;border-color:#1d4ed8;}
+    .btn-blue:hover{background:#1d4ed8;}
+    .btn-primary{background:var(--accent);color:#fff;border-color:var(--accent);}
+    .btn-primary:hover{background:#2563eb;}
+
+    /* ── Content ─────────────────────────────────────────── */
+    .main{flex:1;display:flex;flex-direction:column;min-width:0;}
+    .content{padding:28px;flex:1;}
+
+    /* ── Section ─────────────────────────────────────────── */
+    .sec{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);box-shadow:var(--sh);overflow:hidden;margin-bottom:28px;}
+    .sec-hd{
+      padding:14px 20px;border-bottom:1px solid var(--border);
+      display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;
+    }
+    .sec-hd h3{font-size:13px;font-weight:600;}
+    .tb{display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
+    .tb input,.tb select{
+      padding:6px 10px;border:1px solid var(--border);border-radius:7px;
+      background:var(--surface);color:var(--text);font-size:13px;outline:none;
+    }
+    .tb input:focus,.tb select:focus{border-color:#6b7280;}
+
+    /* ── Table ───────────────────────────────────────────── */
+    .tw{overflow-x:auto;}
+    table{width:100%;border-collapse:collapse;font-size:13px;}
+    thead th{
+      padding:10px 16px;text-align:left;font-size:10.5px;font-weight:600;
+      letter-spacing:.06em;text-transform:uppercase;color:var(--muted);
+      border-bottom:1px solid var(--border);white-space:nowrap;cursor:pointer;
+    }
+    thead th:hover{color:var(--text);}
+    thead th .sort-arrow{font-size:10px;margin-left:3px;}
+    tbody tr{transition:background .1s;}
+    tbody tr:hover{background:var(--lt);}
+    tbody td{padding:10px 16px;border-bottom:1px solid var(--border);vertical-align:middle;}
+    tbody tr:last-child td{border-bottom:none;}
+
+    .badge{display:inline-block;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:600;}
+    .bn{background:#2a2d3a;color:#8b8d98;}
+    .bb{background:#1e3a5f;color:#60a5fa;}
+    .bg{background:#14532d;color:#4ade80;}
+
+    .empty{padding:36px;text-align:center;color:var(--muted);font-size:13px;}
+    .sp{display:inline-block;width:16px;height:16px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .6s linear infinite;vertical-align:middle;margin-right:5px;}
+    @keyframes spin{to{transform:rotate(360deg);}}
+
+    /* ── Toast ───────────────────────────────────────────── */
+    #toast{position:fixed;bottom:22px;right:22px;background:var(--text);color:#fff;padding:10px 16px;border-radius:8px;font-size:13px;box-shadow:0 4px 12px rgba(0,0,0,.18);opacity:0;transform:translateY(6px);transition:opacity .2s,transform .2s;pointer-events:none;z-index:999;}
+    #toast.show{opacity:1;transform:translateY(0);}
+    #toast.error{background:var(--red);}
+    #toast.success{background:var(--green);}
+
+    /* ── Modal ───────────────────────────────────────────── */
+    .modal-bg{
+      display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);
+      z-index:100;align-items:center;justify-content:center;padding:20px;
+    }
+    .modal-bg.open{display:flex;}
+    .modal{
+      background:var(--surface);border-radius:14px;width:100%;max-width:480px;
+      display:flex;flex-direction:column;overflow:hidden;
+      box-shadow:0 20px 60px rgba(0,0,0,.2);
+    }
+    .modal-head{
+      padding:20px 24px 16px;border-bottom:1px solid var(--border);
+      display:flex;align-items:flex-start;justify-content:space-between;gap:12px;
+    }
+    .modal-head h2{font-size:16px;font-weight:700;}
+    .modal-close{
+      width:32px;height:32px;border-radius:8px;border:1px solid var(--border);
+      background:none;cursor:pointer;font-size:18px;color:var(--muted);
+      display:flex;align-items:center;justify-content:center;flex-shrink:0;
+    }
+    .modal-close:hover{background:var(--lt);}
+    .modal-body{padding:20px 24px;}
+    .modal-body label{display:block;font-size:12px;font-weight:600;color:var(--muted);margin-bottom:5px;text-transform:uppercase;letter-spacing:.05em;}
+    .modal-body input[type="text"]{
+      width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:7px;
+      font-size:14px;outline:none;margin-bottom:16px;background:var(--surface);color:var(--text);
+    }
+    .modal-body input[type="text"]:focus{border-color:#6b7280;}
+    .modal-footer{
+      padding:14px 24px;border-top:1px solid var(--border);
+      display:flex;justify-content:flex-end;gap:8px;
+    }
+
+    /* ── Inline edit inputs ──────────────────────────────── */
+    .inline-input{
+      padding:4px 8px;border:1px solid var(--border);border-radius:5px;
+      font-size:13px;outline:none;width:100%;background:var(--surface);color:var(--text);
+    }
+    .inline-input:focus{border-color:var(--blue);}
+    .actions{display:flex;gap:4px;white-space:nowrap;}
+    /* ── Scrollbar (dark) ──────────────────────────────────── */
+    ::-webkit-scrollbar{width:8px;height:8px;}
+    ::-webkit-scrollbar-track{background:#0f1117;}
+    ::-webkit-scrollbar-thumb{background:#2a2d3a;border-radius:4px;}
+    ::-webkit-scrollbar-thumb:hover{background:#3a3d4a;}
+  </style>
+  <link rel="stylesheet" href="{{ url_for('static', filename='admin-redesign.css') }}"/>
+</head>
+<body>
+<div class="shell">
+
+<!-- ─── Sidebar ──────────────────────────────────── -->
+<aside class="sb">
+  <div class="sb-logo">
+    <div class="name">DeckView</div>
+    <div class="sub">Панель администратора</div>
+  </div>
+  <nav class="sb-nav">
+    <div class="nl">Основное</div>
+    <a class="ni" href="/admin"><span class="ic">&#9672;</span>Обзор</a>
+    <a class="ni active" href="/admin/archetypes"><span class="ic">&#x1F524;</span>Архетипы</a>
+  </nav>
+  <div class="sb-foot">DeckView Bot &middot; blizzcore.ru</div>
+</aside>
+
+<!-- ─── Main ──────────────────────────────────────── -->
+<div class="main">
+  <div class="topbar">
+    <span class="topbar-title">Архетипы</span>
+    <div style="display:flex;gap:8px;align-items:center;">
+      <span id="count-badge" class="badge bn" style="font-size:12px;"></span>
+      <button class="btn btn-blue" onclick="importFromSheet()">&#x2B07; Импорт из Google Таблицы</button>
+      <button class="btn btn-primary" onclick="openAddModal()">+ Добавить</button>
+    </div>
+  </div>
+
+  <div class="content">
+    <div class="sec">
+      <div class="sec-hd">
+        <h3>Переводы архетипов (English &rarr; Russian)</h3>
+        <div class="tb">
+          <input type="text" id="search" placeholder="Поиск..." oninput="onSearch()" style="min-width:220px;"/>
+        </div>
+      </div>
+      <div class="tw">
+        <table>
+          <thead>
+            <tr>
+              <th style="width:50px;" onclick="setSort('id')"># <span class="sort-arrow" id="sort-id"></span></th>
+              <th onclick="setSort('name_en')">Английское название <span class="sort-arrow" id="sort-name_en"></span></th>
+              <th onclick="setSort('name_ru')">Русский перевод <span class="sort-arrow" id="sort-name_ru"></span></th>
+              <th style="width:150px;">Действия</th>
+            </tr>
+          </thead>
+          <tbody id="tbody">
+            <tr><td colspan="4" class="empty"><span class="sp"></span> Загрузка...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+</div><!-- .shell -->
+
+<!-- ─── Add/Edit Modal ─────────────────────────────── -->
+<div class="modal-bg" id="modal">
+  <div class="modal">
+    <div class="modal-head">
+      <h2 id="modal-title">Добавить архетип</h2>
+      <button class="modal-close" onclick="closeModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <label>Английское название</label>
+      <input type="text" id="m-name-en" placeholder="e.g. Aggro Paladin"/>
+      <label>Русский перевод</label>
+      <input type="text" id="m-name-ru" placeholder="e.g. Агро Паладин"/>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeModal()">Отмена</button>
+      <button class="btn btn-primary" id="modal-save" onclick="saveModal()">Сохранить</button>
+    </div>
+  </div>
+</div>
+
+<!-- ─── Delete Confirm Modal ───────────────────────── -->
+<div class="modal-bg" id="del-modal">
+  <div class="modal" style="max-width:400px;">
+    <div class="modal-head">
+      <h2>Удалить архетип?</h2>
+      <button class="modal-close" onclick="closeDelModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p id="del-msg" style="font-size:14px;color:var(--muted);"></p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeDelModal()">Отмена</button>
+      <button class="btn btn-red" onclick="confirmDelete()">Удалить</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+const API = '/admin/api/archetypes';
+let allItems = [];
+let sortBy = 'name_en';
+let sortDir = 'asc';
+let editingId = null;
+let deletingId = null;
+let searchTerm = '';
+
+function toast(msg, type) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = type === 'error' ? 'show error' : type === 'success' ? 'show success' : 'show';
+  clearTimeout(t._tid);
+  t._tid = setTimeout(() => t.className = '', 3000);
+}
+
+async function fetchArchetypes() {
+  try {
+    const r = await fetch(`${API}?sort_by=${sortBy}&sort_dir=${sortDir}`);
+    const d = await r.json();
+    allItems = d.items || [];
+    render();
+  } catch (e) {
+    toast('Ошибка загрузки: ' + e.message, 'error');
+  }
+}
+
+function render() {
+  const tbody = document.getElementById('tbody');
+  const badge = document.getElementById('count-badge');
+  let items = allItems;
+
+  if (searchTerm) {
+    const q = searchTerm.toLowerCase();
+    items = items.filter(a =>
+      a.name_en.toLowerCase().includes(q) || a.name_ru.toLowerCase().includes(q)
+    );
+  }
+
+  badge.textContent = items.length + ' шт.';
+  updateSortArrows();
+
+  if (!items.length) {
+    tbody.innerHTML = '<tr><td colspan="4" class="empty">Нет архетипов</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = items.map((a, i) => `
+    <tr data-id="${a.id}">
+      <td style="color:var(--muted);font-size:12px;">${i + 1}</td>
+      <td>${esc(a.name_en)}</td>
+      <td>${esc(a.name_ru)}</td>
+      <td>
+        <div class="actions">
+          <button class="btn btn-sm" onclick="startEdit(${a.id})">&#9998; Правка</button>
+          <button class="btn btn-sm btn-red" onclick="startDelete(${a.id})">&#x2715; Удалить</button>
+        </div>
+      </td>
+    </tr>
+  `).join('');
+}
+
+function esc(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+function updateSortArrows() {
+  document.querySelectorAll('.sort-arrow').forEach(el => el.textContent = '');
+  const el = document.getElementById('sort-' + sortBy);
+  if (el) el.textContent = sortDir === 'asc' ? '\u25B2' : '\u25BC';
+}
+
+function setSort(col) {
+  if (sortBy === col) {
+    sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+  } else {
+    sortBy = col;
+    sortDir = 'asc';
+  }
+  fetchArchetypes();
+}
+
+function onSearch() {
+  searchTerm = document.getElementById('search').value.trim();
+  render();
+}
+
+// ─── Add Modal ────────────────────────────────────
+
+function openAddModal() {
+  editingId = null;
+  document.getElementById('modal-title').textContent = 'Добавить архетип';
+  document.getElementById('m-name-en').value = '';
+  document.getElementById('m-name-ru').value = '';
+  document.getElementById('modal').classList.add('open');
+  document.getElementById('m-name-en').focus();
+}
+
+function closeModal() {
+  document.getElementById('modal').classList.remove('open');
+}
+
+function startEdit(id) {
+  const item = allItems.find(a => a.id === id);
+  if (!item) return;
+  editingId = id;
+  document.getElementById('modal-title').textContent = 'Редактировать архетип';
+  document.getElementById('m-name-en').value = item.name_en;
+  document.getElementById('m-name-ru').value = item.name_ru;
+  document.getElementById('modal').classList.add('open');
+  document.getElementById('m-name-en').focus();
+}
+
+async function saveModal() {
+  const name_en = document.getElementById('m-name-en').value.trim();
+  const name_ru = document.getElementById('m-name-ru').value.trim();
+  if (!name_en || !name_ru) {
+    toast('Заполните оба поля', 'error');
+    return;
+  }
+
+  try {
+    let r;
+    if (editingId) {
+      r = await fetch(`${API}/${editingId}`, {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({name_en, name_ru}),
+      });
+    } else {
+      r = await fetch(API, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({name_en, name_ru}),
+      });
+    }
+    const d = await r.json();
+    if (!r.ok) {
+      toast(d.error || 'Ошибка', 'error');
+      return;
+    }
+    toast(editingId ? 'Обновлено' : 'Добавлено', 'success');
+    closeModal();
+    fetchArchetypes();
+  } catch (e) {
+    toast('Ошибка: ' + e.message, 'error');
+  }
+}
+
+// ─── Delete ───────────────────────────────────────
+
+function startDelete(id) {
+  const item = allItems.find(a => a.id === id);
+  if (!item) return;
+  deletingId = id;
+  document.getElementById('del-msg').textContent = `Удалить "${item.name_en}" \u2192 "${item.name_ru}"?`;
+  document.getElementById('del-modal').classList.add('open');
+}
+
+function closeDelModal() {
+  document.getElementById('del-modal').classList.remove('open');
+  deletingId = null;
+}
+
+async function confirmDelete() {
+  if (!deletingId) return;
+  try {
+    const r = await fetch(`${API}/${deletingId}`, {method: 'DELETE'});
+    const d = await r.json();
+    if (!r.ok) {
+      toast(d.error || 'Ошибка', 'error');
+      return;
+    }
+    toast('Удалено', 'success');
+    closeDelModal();
+    fetchArchetypes();
+  } catch (e) {
+    toast('Ошибка: ' + e.message, 'error');
+  }
+}
+
+// ─── Import ───────────────────────────────────────
+
+async function importFromSheet() {
+  if (!confirm('Импортировать переводы из Google Таблицы? Существующие записи будут обновлены.')) return;
+  toast('Импорт...', '');
+  try {
+    const r = await fetch(`${API}/import`, {method: 'POST'});
+    const d = await r.json();
+    if (!r.ok) {
+      toast(d.error || 'Ошибка импорта', 'error');
+      return;
+    }
+    toast(`Импорт: +${d.added} новых, ${d.updated} обновлено (всего ${d.total_fetched} из таблицы)`, 'success');
+    fetchArchetypes();
+  } catch (e) {
+    toast('Ошибка: ' + e.message, 'error');
+  }
+}
+
+// ─── Keyboard ─────────────────────────────────────
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    closeModal();
+    closeDelModal();
+  }
+  if (e.key === 'Enter' && document.getElementById('modal').classList.contains('open')) {
+    saveModal();
+  }
+});
+
+// ─── Init ─────────────────────────────────────────
+fetchArchetypes();
+</script>
+</body>
+</html>

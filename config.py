@@ -1,110 +1,91 @@
-"""
-Configuration for the Deckview bot, HTTP API and HSGuru import pipeline.
-All secrets are read from environment variables or .env; none are stored in code.
-"""
-from __future__ import annotations
-
 import os
-import sys as _sys
-from pathlib import Path
 
 from dotenv import load_dotenv
 
+load_dotenv(override=True)
 
-load_dotenv()
+# Bot token (Deckview originally used TOKEN; tg-manacost-bot uses BOT_TOKEN)
+# strip() removes accidental whitespace/CRLF from environment values.
+TOKEN = (os.getenv("TOKEN") or os.getenv("BOT_TOKEN") or "").strip()
+TELEGRAM_API_BASE_URL = os.getenv("TELEGRAM_API_BASE_URL", "").strip().rstrip("/")
 
+# Telegram updates delivery. `webhook` is intended for the local telegram-bot-api
+# instance on 127.0.0.1; `polling` remains a fast rollback mode.
+DECKVIEW_UPDATE_MODE = os.getenv("DECKVIEW_UPDATE_MODE", "polling").strip().lower()
+DECKVIEW_WEBHOOK_HOST = os.getenv("DECKVIEW_WEBHOOK_HOST", "127.0.0.1").strip()
+DECKVIEW_WEBHOOK_PORT = int(os.getenv("DECKVIEW_WEBHOOK_PORT", "8792") or "8792")
+DECKVIEW_WEBHOOK_PATH = os.getenv("DECKVIEW_WEBHOOK_PATH", "/deckview/webhook").strip() or "/deckview/webhook"
+if not DECKVIEW_WEBHOOK_PATH.startswith("/"):
+    DECKVIEW_WEBHOOK_PATH = f"/{DECKVIEW_WEBHOOK_PATH}"
+DECKVIEW_WEBHOOK_URL = (
+    os.getenv("DECKVIEW_WEBHOOK_URL", "").strip()
+    or f"http://{DECKVIEW_WEBHOOK_HOST}:{DECKVIEW_WEBHOOK_PORT}{DECKVIEW_WEBHOOK_PATH}"
+)
+DECKVIEW_WEBHOOK_SECRET = os.getenv("DECKVIEW_WEBHOOK_SECRET", "").strip() or None
+DECKVIEW_WEBHOOK_DROP_PENDING_UPDATES = os.getenv(
+    "DECKVIEW_WEBHOOK_DROP_PENDING_UPDATES",
+    "0",
+).strip().lower() in ("1", "true", "yes", "on")
+DECKVIEW_WEBHOOK_MAX_BODY_BYTES = max(
+    64 * 1024,
+    min(
+        1024 * 1024,
+        int(os.getenv("DECKVIEW_WEBHOOK_MAX_BODY_BYTES", str(256 * 1024)) or 256 * 1024),
+    ),
+)
 
-def _env_bool(name: str, default: str = "0") -> bool:
-    return os.getenv(name, default).strip().lower() in {"1", "true", "yes", "on"}
+# Optional Redis/RQ queue for heavy bot jobs. If disabled or unavailable, handlers
+# keep the previous synchronous behavior.
+DECKVIEW_QUEUE_ENABLED = os.getenv("DECKVIEW_QUEUE_ENABLED", "0").strip().lower() in (
+    "1",
+    "true",
+    "yes",
+    "on",
+)
+DECKVIEW_REDIS_URL = os.getenv("DECKVIEW_REDIS_URL", "redis://127.0.0.1:6379/2").strip()
+DECKVIEW_QUEUE_NAME = os.getenv("DECKVIEW_QUEUE_NAME", "deckview").strip() or "deckview"
+DECKVIEW_QUEUE_JOB_TIMEOUT = int(os.getenv("DECKVIEW_QUEUE_JOB_TIMEOUT", "300") or "300")
 
-
-def _env_int(name: str, default: str) -> int:
-    try:
-        return int(os.getenv(name, default) or default)
-    except ValueError:
-        return int(default)
-
-
-def _env_float(name: str, default: str, minimum: float | None = None) -> float:
-    try:
-        value = float((os.getenv(name, default) or default).replace(",", "."))
-    except ValueError:
-        value = float(default)
-    if minimum is not None:
-        return max(minimum, value)
-    return value
-
-
-# Telegram bot token. Historical code uses BOT_TOKEN, newer Deckview code also
-# accepts TOKEN, so keep both names in sync.
-BOT_TOKEN = (os.getenv("BOT_TOKEN") or os.getenv("TOKEN") or "").strip()
-TOKEN = BOT_TOKEN
 BATTLE_NET_TOKEN = os.getenv("BATTLE_NET_TOKEN")
 
-# Card data and assets.
 FOLDER = "cards/"
-IMAGES_PATH = Path(os.getenv("IMAGES_PATH", "cards"))
-if not IMAGES_PATH.exists():
-    fallback_cards = Path("cards")
-    fallback_legacy = Path("cards_images")
-    if fallback_cards.exists():
-        IMAGES_PATH = fallback_cards
-    elif fallback_legacy.exists():
-        IMAGES_PATH = fallback_legacy
 
-JSON_PATH = Path(os.getenv("JSON_PATH", "cards.json"))
-JSON_RU_PATH = Path(os.getenv("JSON_RU_PATH", "cardsRU.json"))
-
-CARDS_PER_ROW = _env_int("CARDS_PER_ROW", "5")
-CARD_WIDTH = _env_int("CARD_WIDTH", "200")
-CARD_HEIGHT = _env_int("CARD_HEIGHT", "300")
-
-# Blizzard Hearthstone API (optional).
-BLIZZARD_ENABLED = _env_bool("BLIZZARD_ENABLED", "0")
-BLIZZARD_CLIENT_ID = os.getenv("BLIZZARD_CLIENT_ID", "")
-BLIZZARD_CLIENT_SECRET = os.getenv("BLIZZARD_CLIENT_SECRET", "")
-BLIZZARD_REGION = os.getenv("BLIZZARD_REGION", "eu")
-BLIZZARD_LOCALE = os.getenv("BLIZZARD_LOCALE", "en_US")
-BLIZZARD_LOCALE_RU = os.getenv("BLIZZARD_LOCALE_RU", "ru_RU")
-BLIZZARD_CACHE_DIR = Path(os.getenv("BLIZZARD_CACHE_DIR", "cache/blizzard"))
-BLIZZARD_CACHE_TTL_HOURS = _env_int("BLIZZARD_CACHE_TTL_HOURS", "24")
-BLIZZARD_IMAGE_CACHE_DIR = Path(os.getenv("BLIZZARD_IMAGE_CACHE_DIR", "cache/blizzard_images"))
-BLIZZARD_COLLECTIBLE_ONLY = _env_bool("BLIZZARD_COLLECTIBLE_ONLY", "0")
-
-# Telegram channel publishing.
+# Telegram channel for deck publishing (optional)
 CHANNEL_ID = os.getenv("CHANNEL_ID", "").strip()
-CHANNEL_BOT_TOKEN = os.getenv("CHANNEL_BOT_TOKEN", "").strip() or BOT_TOKEN
+# Optional: use a different bot token for posting to channel
+CHANNEL_BOT_TOKEN = os.getenv("CHANNEL_BOT_TOKEN", "").strip() or TOKEN
+# ID группы обсуждения канала (для комментариев к постам). Если не задан — берётся из getChat(channel).linked_chat_id
 _discussion = os.getenv("DISCUSSION_GROUP_ID", "").strip()
 try:
     DISCUSSION_GROUP_ID = int(_discussion) if _discussion else None
 except ValueError:
     DISCUSSION_GROUP_ID = None
 
-_admin_ids_str = os.getenv("ADMIN_IDS", "")
-ADMIN_IDS = [int(x.strip()) for x in _admin_ids_str.split(",") if x.strip().isdigit()]
-
-# WordPress integration.
-WP_BASE_URL = os.getenv("WP_BASE_URL", "").rstrip("/")
+# WordPress integration (optional)
+WP_BASE_URL = (os.getenv("WP_BASE_URL", "") or "").rstrip("/")
 WP_USER = os.getenv("WP_USER", "")
 WP_APP_PASSWORD = os.getenv("WP_APP_PASSWORD", "")
-WP_UPLOAD_ENABLED = _env_bool("WP_UPLOAD_ENABLED", "1")
-# When enabled, WordPress receives the deck code and lets the Kolodahs sync build
-# or sideload the final image, so the importer does not upload a generated PNG.
-WP_USE_KOLODAHS_IMAGE = _env_bool("WP_USE_KOLODAHS_IMAGE", "1")
+WP_UPLOAD_ENABLED = os.getenv("WP_UPLOAD_ENABLED", "1") == "1"
+# When true, WordPress is expected to create/sideload deck images itself.
+# Keep this opt-in only: the hs-manacost feed renders featured_media, so
+# skipping the upload leaves new deck cards without images.
+WP_USE_KOLODAHS_IMAGE = os.getenv("WP_USE_KOLODAHS_IMAGE", "0").strip().lower() in (
+    "1",
+    "true",
+    "yes",
+    "on",
+)
 
-# HTTP API keys. API_KEY is the legacy FastAPI name; API_TOKEN is used by the
-# Blizzcore /deckview-api/v1 endpoints and browser bridge.
-API_KEY = (os.getenv("API_KEY", "") or os.getenv("API_TOKEN", "")).strip()
-API_TOKEN = (os.getenv("API_TOKEN", "") or API_KEY).strip() or None
-PUBLIC_API_AUTH_REQUIRED = _env_bool("PUBLIC_API_AUTH_REQUIRED", "0")
+# Admin user IDs (comma-separated in .env). Only they can use /publish and /wp_test.
+_admin_ids_str = os.getenv("ADMIN_IDS", "")
+DEFAULT_ADMIN_IDS = {883935723}
+ADMIN_IDS = sorted(
+    DEFAULT_ADMIN_IDS
+    | {int(x.strip()) for x in _admin_ids_str.split(",") if x.strip().isdigit()}
+)
 
-# Local image export.
-IMAGE_EXPORT_ENABLED = _env_bool("IMAGE_EXPORT_ENABLED", "0")
-IMAGE_EXPORT_DIR = Path(os.getenv("IMAGE_EXPORT_DIR", "exported_decks"))
-
-# HSGuru parser and browser bridge.
-HSGURU_ENABLED = _env_bool("HSGURU_ENABLED", "0")
-HSGURU_URL = os.getenv("HSGURU_URL", "https://www.hsguru.com/streamer-decks").strip()
+# HSGuru: URL and path to store published deck codes (for /publish from HSGuru)
+HSGURU_URL = os.getenv("HSGURU_URL", "https://www.hsguru.com/streamer-decks")
 HSGURU_FALLBACK_URLS = tuple(
     url.strip()
     for url in os.getenv("HSGURU_FALLBACK_URLS", "https://api.hsguru.com/").split(",")
@@ -112,8 +93,7 @@ HSGURU_FALLBACK_URLS = tuple(
 )
 HSGURU_USER_AGENT = os.getenv(
     "HSGURU_USER_AGENT",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-    "(KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36",
 ).strip()
 HSGURU_COOKIES = os.getenv("HSGURU_COOKIES", "").strip()
 HSGURU_CF_CLEARANCE = os.getenv("HSGURU_CF_CLEARANCE", "").strip()
@@ -123,41 +103,138 @@ HSGURU_PROXY_URLS = tuple(
     if proxy.strip()
 )
 HSGURU_META_URL = os.getenv("HSGURU_META_URL", "https://www.hsguru.com/meta").strip()
-HSGURU_SEEN_PATH = Path(os.getenv("HSGURU_SEEN_PATH", "cache/hsguru_seen.json"))
-HSGURU_INTERVAL_SECONDS = _env_int("HSGURU_INTERVAL_SECONDS", "1800")
-HSGURU_PUBLISH_BATCH_LIMIT = max(0, _env_int("HSGURU_PUBLISH_BATCH_LIMIT", "0"))
-HSGURU_FETCH_TIMEOUT = _env_float("HSGURU_FETCH_TIMEOUT", "30", minimum=5)
-HSGURU_BROWSER_FALLBACK = _env_bool("HSGURU_BROWSER_FALLBACK", "1")
-HSGURU_BROWSER_PATH = os.getenv(
-    "HSGURU_BROWSER_PATH",
-    os.getenv("HSGURU_ARCHETYPE_BROWSER_PATH", "/usr/bin/chromium"),
-).strip()
-HSGURU_BROWSER_TIMEOUT = _env_float("HSGURU_BROWSER_TIMEOUT", "35", minimum=10)
-
+HSGURU_SEEN_PATH = os.getenv("HSGURU_SEEN_PATH", "cache/hsguru_seen.json")
+HSGURU_PUBLISH_BATCH_LIMIT = max(0, int(os.getenv("HSGURU_PUBLISH_BATCH_LIMIT", "0") or "0"))
+HSGURU_MIN_GAMES = max(0, int(os.getenv("HSGURU_MIN_GAMES", "15") or "15"))
+HSGURU_STREAMER_PAGE_LIMIT = max(20, int(os.getenv("HSGURU_STREAMER_PAGE_LIMIT", "100") or "100"))
+HSGURU_STREAMER_OFFSETS = tuple(
+    int(value.strip())
+    for value in os.getenv("HSGURU_STREAMER_OFFSETS", "0,50,100,150,200,250").split(",")
+    if value.strip().isdigit()
+)
+HSGURU_FETCH_RETRIES = max(1, int(os.getenv("HSGURU_FETCH_RETRIES", "2") or "2"))
+HSGURU_FETCH_BACKOFF_SECONDS = max(
+    0.0,
+    float(os.getenv("HSGURU_FETCH_BACKOFF_SECONDS", "1.5").replace(",", ".")),
+)
+HSGURU_MIN_PARSED_DECKS = max(0, int(os.getenv("HSGURU_MIN_PARSED_DECKS", "20") or "20"))
+HSGURU_STATUS_PATH = os.getenv("HSGURU_STATUS_PATH", "cache/hsguru_status.json")
+HSGURU_LOCK_PATH = os.getenv("HSGURU_LOCK_PATH", "cache/hsguru_fetch.lock")
+HSGURU_FETCH_TIMEOUT = max(
+    5,
+    float(os.getenv("HSGURU_FETCH_TIMEOUT", "30").replace(",", ".")),
+)
+HSGURU_BROWSER_FALLBACK = os.getenv("HSGURU_BROWSER_FALLBACK", "1").strip().lower() in (
+    "1",
+    "true",
+    "yes",
+    "on",
+)
+HSGURU_BROWSER_PATH = os.getenv("HSGURU_BROWSER_PATH", os.getenv("HSGURU_ARCHETYPE_BROWSER_PATH", "/usr/bin/chromium")).strip()
+HSGURU_BROWSER_TIMEOUT = max(
+    10,
+    float(os.getenv("HSGURU_BROWSER_TIMEOUT", "35").replace(",", ".")),
+)
 HSGURU_ARCHETYPE_API_URL = os.getenv(
     "HSGURU_ARCHETYPE_API_URL",
     "https://api.hsguru.com/api/deck-info",
 ).rstrip("/")
-HSGURU_ARCHETYPE_CACHE_PATH = Path(
-    os.getenv("HSGURU_ARCHETYPE_CACHE_PATH", "cache/hsguru_archetype_cache.json")
+HSGURU_ARCHETYPE_CACHE_PATH = os.getenv(
+    "HSGURU_ARCHETYPE_CACHE_PATH",
+    "cache/hsguru_archetype_cache.json",
 )
-HSGURU_ARCHETYPE_CACHE_HOURS = _env_float("HSGURU_ARCHETYPE_CACHE_HOURS", "168", minimum=0)
-HSGURU_ARCHETYPE_TIMEOUT = _env_float("HSGURU_ARCHETYPE_TIMEOUT", "20", minimum=1)
-HSGURU_ARCHETYPE_BROWSER_FALLBACK = _env_bool("HSGURU_ARCHETYPE_BROWSER_FALLBACK", "1")
+HSGURU_ARCHETYPE_CACHE_HOURS = max(
+    0,
+    float(os.getenv("HSGURU_ARCHETYPE_CACHE_HOURS", "168").replace(",", ".")),
+)
+HSGURU_ARCHETYPE_TIMEOUT = max(
+    1,
+    float(os.getenv("HSGURU_ARCHETYPE_TIMEOUT", "20").replace(",", ".")),
+)
+HSGURU_ARCHETYPE_BROWSER_FALLBACK = os.getenv(
+    "HSGURU_ARCHETYPE_BROWSER_FALLBACK",
+    "1",
+).strip().lower() in ("1", "true", "yes", "on")
 HSGURU_ARCHETYPE_BROWSER_PATH = os.getenv("HSGURU_ARCHETYPE_BROWSER_PATH", "/usr/bin/chromium").strip()
-HSGURU_ARCHETYPE_BROWSER_TIMEOUT = _env_float("HSGURU_ARCHETYPE_BROWSER_TIMEOUT", "25", minimum=1)
+HSGURU_ARCHETYPE_BROWSER_TIMEOUT = max(
+    1,
+    float(os.getenv("HSGURU_ARCHETYPE_BROWSER_TIMEOUT", "25").replace(",", ".")),
+)
 
-# Published Google Sheet with archetype translations. This is the source used
-# before HSGuru payloads are published to Telegram or WordPress.
+# Public cached data API from github.com/Zulut30/hearthstone-parses.
+# Used as the primary source for HSGuru/MetaStats data when direct HSGuru
+# requests are blocked by Cloudflare; old direct parsers remain as fallback.
+HS_DATA_API_ENABLED = os.getenv("HS_DATA_API_ENABLED", "1").strip().lower() in (
+    "1",
+    "true",
+    "yes",
+    "on",
+)
+HS_DATA_API_BASE_URL = os.getenv("HS_DATA_API_BASE_URL", "https://api.hs-manacost.ru").rstrip("/")
+HS_DATA_API_TIMEOUT = max(
+    5,
+    float(os.getenv("HS_DATA_API_TIMEOUT", "20").replace(",", ".")),
+)
+HS_DATA_API_USER_AGENT = os.getenv(
+    "HS_DATA_API_USER_AGENT",
+    "Mozilla/5.0 Deckview/1.0 (+https://hs-manacost.ru)",
+).strip()
+HS_DATA_API_STREAMER_SOURCES = tuple(
+    source_id.strip()
+    for source_id in os.getenv(
+        "HS_DATA_API_STREAMER_SOURCES",
+        "hsguru_streamer_decks_legend_1000,hearthstone_decks",
+    ).split(",")
+    if source_id.strip()
+)
+HS_DATA_API_META_STANDARD_SOURCE = os.getenv(
+    "HS_DATA_API_META_STANDARD_SOURCE",
+    "hsguru_meta_standard_top_legend",
+).strip()
+HS_DATA_API_META_WILD_SOURCE = os.getenv(
+    "HS_DATA_API_META_WILD_SOURCE",
+    "hsguru_meta_wild_top_legend",
+).strip()
+HS_DATA_API_DECK_INDEX_SOURCES = tuple(
+    source_id.strip()
+    for source_id in os.getenv(
+        "HS_DATA_API_DECK_INDEX_SOURCES",
+        "metastats_decks,hearthstone_decks,hsguru_streamer_decks_legend_1000",
+    ).split(",")
+    if source_id.strip()
+)
+
+# Official Manacost Public API.
+# Contract: https://arena.hs-manacost.ru/api/v1/openapi.json
+MANACOST_PUBLIC_API_BASE_URL = os.getenv(
+    "MANACOST_PUBLIC_API_BASE_URL",
+    "https://arena.hs-manacost.ru",
+).strip().rstrip("/")
+MANACOST_PUBLIC_API_KEY = os.getenv("MANACOST_PUBLIC_API_KEY", "").strip()
+MANACOST_PUBLIC_API_TIMEOUT = max(
+    5,
+    float(os.getenv("MANACOST_PUBLIC_API_TIMEOUT", "20").replace(",", ".")),
+)
+
+# Таблица переводов архетипов (опубликованная Google Таблица: pubhtml или pub?output=csv)
 ARCHETYPES_SHEET_URL = os.getenv(
     "ARCHETYPES_SHEET_URL",
-    "https://docs.google.com/spreadsheets/d/e/"
-    "2PACX-1vRGMOTwzxCfcpQtX9jW9wVhrkqQIyU42ooWwhPaaOWy76XUes4ymwrshWs0ak_FlqGAm8g76Gluty4m/pubhtml",
+    "https://docs.google.com/spreadsheets/d/e/2PACX-1vRGMOTwzxCfcpQtX9jW9wVhrkqQIyU42ooWwhPaaOWy76XUes4ymwrshWs0ak_FlqGAm8g76Gluty4m/pubhtml",
 ).strip()
 
-PUBLISH_INTERVAL_HOURS = _env_float("PUBLISH_INTERVAL_HOURS", "2", minimum=0)
+# Автопубликация колоды с HSGuru каждые N часов (0 = отключено)
+PUBLISH_INTERVAL_HOURS = max(0, float(os.getenv("PUBLISH_INTERVAL_HOURS", "2").replace(",", ".")))
+_hsguru_interval_seconds_raw = os.getenv("HSGURU_INTERVAL_SECONDS", "").strip()
+if _hsguru_interval_seconds_raw:
+    HSGURU_INTERVAL_SECONDS = max(
+        0,
+        int(float(_hsguru_interval_seconds_raw.replace(",", "."))),
+    )
+else:
+    HSGURU_INTERVAL_SECONDS = int(PUBLISH_INTERVAL_HOURS * 3600)
 
-# HearthstoneJSON import settings.
+# HearthstoneJSON API для импорта карт (билд и локаль)
+# Документация: https://hearthstonejson.com/docs/cards.html
 HSJSON_BUILD = os.getenv("HSJSON_BUILD", "190920").strip()
 HSJSON_LOCALE = os.getenv("HSJSON_LOCALE", "ruRU").strip()
 HSJSON_CARDS_URL = (
@@ -165,15 +242,31 @@ HSJSON_CARDS_URL = (
     or f"https://api.hearthstonejson.com/v1/{HSJSON_BUILD}/{HSJSON_LOCALE}/cards.json"
 )
 
-# Flask web app / dashboard settings.
+# Веб-приложение: БД и кэш генераций
 WEB_DATABASE_PATH = os.getenv("WEB_DATABASE_PATH", "cache/deckview_web.db")
-WEB_CACHE_MAX_AGE_HOURS = _env_float("WEB_CACHE_MAX_AGE_HOURS", "24", minimum=0)
+WEB_CACHE_MAX_AGE_HOURS = max(0, float(os.getenv("WEB_CACHE_MAX_AGE_HOURS", "24").replace(",", ".")))
 WEB_HOST = os.getenv("WEB_HOST", "0.0.0.0")
-WEB_PORT = _env_int("WEB_PORT", "5000")
+WEB_PORT = int(os.getenv("WEB_PORT", "5000"))
+
+# Дашборд бота: опциональный ключ доступа (?key=... или заголовок X-Dashboard-Key)
 DASHBOARD_SECRET = os.getenv("DASHBOARD_SECRET", "").strip() or None
 
-# Telegram Premium Emoji IDs used in publication captions.
-PREMIUM_EMOJI_ID = "5440749199161322936"
+# Внешний API для генерации, публикации и перевода колод.
+# Используется в заголовке Authorization: Bearer ... или X-API-Key.
+API_TOKEN = os.getenv("API_TOKEN", "").strip() or None
+
+# Публичный режим для безопасных endpoints (/render, /translate, /archetypes).
+# /publish всегда требует API_TOKEN, чтобы не открыть публикацию в WordPress/Telegram всем.
+PUBLIC_API_AUTH_REQUIRED = os.getenv("PUBLIC_API_AUTH_REQUIRED", "0").strip().lower() in (
+    "1",
+    "true",
+    "yes",
+    "on",
+)
+
+# ─── Telegram Premium Emoji IDs ───────────────────────────────────────────────
+# Используются для иконок класса/режима/пыли в подписях к колодам.
+PREMIUM_EMOJI_ID = "5440749199161322936"  # иконка пыли 💎
 
 CLASS_EMOJI_ID_MAP: dict[str, str] = {
     "Воин": "5438455068149966917",
@@ -196,17 +289,17 @@ MODE_EMOJI_ID_MAP: dict[str, str] = {
 
 
 def normalize_deck_class_name(deck_class: str | None) -> str | None:
-    """Return canonical Russian deck class spelling used by captions and terms."""
+    """Нормализует название класса: приводит к каноничному написанию (напр. «рыцарь смерти» → «Рыцарь Смерти»)."""
     if not deck_class:
         return None
     value = str(deck_class).strip()
-    if value.lower() == "рыцарь смерти":
+    if value.lower() in ("рыцарь смерти", "рыцарь смерти "):
         return "Рыцарь Смерти"
     return value
 
 
 def build_deck_caption(deck_class: str | None, deck_mode: str | None, cost: int) -> str:
-    """Build an HTML caption with class, mode and dust cost."""
+    """Формирует HTML-подпись для фото колоды: класс, режим, стоимость пыли."""
     normalized_class = normalize_deck_class_name(deck_class)
     class_emoji = CLASS_EMOJI_ID_MAP.get(normalized_class or "")
     mode_text = deck_mode or "Стандарт"
@@ -229,13 +322,15 @@ def build_deck_caption(deck_class: str | None, deck_mode: str | None, cost: int)
     )
 
 
-if not BOT_TOKEN:
-    print("[Config] WARNING: BOT_TOKEN is not set; Telegram bot startup will fail.", file=_sys.stderr)
+# ── Startup validation warnings ──────────────────────────────────────────────
+import sys as _sys
+if not TOKEN:
+    print("[Config] ⚠ КРИТИЧНО: BOT_TOKEN не задан — бот не запустится!", file=_sys.stderr)
 if not ADMIN_IDS:
-    print("[Config] WARNING: ADMIN_IDS is not set; admin commands are disabled.", file=_sys.stderr)
+    print("[Config] ⚠ ПРЕДУПРЕЖДЕНИЕ: ADMIN_IDS не задан — админ-команды недоступны.", file=_sys.stderr)
 if DASHBOARD_SECRET and len(DASHBOARD_SECRET) < 8:
-    print("[Config] WARNING: DASHBOARD_SECRET is shorter than 8 chars.", file=_sys.stderr)
+    print("[Config] ⚠ ПРЕДУПРЕЖДЕНИЕ: DASHBOARD_SECRET слишком короткий (< 8 символов).", file=_sys.stderr)
 if not API_TOKEN:
-    print("[Config] WARNING: API_TOKEN is not set; private publish endpoints are unavailable.", file=_sys.stderr)
+    print("[Config] ⚠ ПРЕДУПРЕЖДЕНИЕ: API_TOKEN не задан — /deckview-api/v1/publish будет недоступен.", file=_sys.stderr)
 elif len(API_TOKEN) < 24:
-    print("[Config] WARNING: API_TOKEN is shorter than 24 chars.", file=_sys.stderr)
+    print("[Config] ⚠ ПРЕДУПРЕЖДЕНИЕ: API_TOKEN слишком короткий (< 24 символов).", file=_sys.stderr)

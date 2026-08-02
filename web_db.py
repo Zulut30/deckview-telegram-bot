@@ -15,6 +15,33 @@ from config import WEB_CACHE_MAX_AGE_HOURS, WEB_DATABASE_PATH
 
 # Guard: init_db() выполняется только один раз за процесс
 _db_initialized = False
+IMAGE_STYLE_CLASSIC = "classic"
+IMAGE_STYLE_PARCHMENT = "parchment"
+IMAGE_STYLE_CUSTOM = "custom"
+VALID_IMAGE_STYLES = {
+    IMAGE_STYLE_CLASSIC,
+    IMAGE_STYLE_PARCHMENT,
+    IMAGE_STYLE_CUSTOM,
+}
+VALID_IMAGE_FONTS = {
+    "auto",
+    "hearthstone",
+    "belwe",
+    "montserrat",
+    "oswald",
+    "roboto_slab",
+    "merriweather",
+    "lato_black",
+    "noto_serif",
+    "inter",
+    "open_sans",
+    "roboto_condensed",
+    "source_sans",
+    "source_serif",
+    "roboto",
+}
+VALID_BACKGROUND_BLURS = {0, 25, 50, 100}
+TELEGRAM_GROUP_ANONYMOUS_BOT_ID = 1087968824
 
 
 def _db_path() -> Path:
@@ -48,6 +75,40 @@ def _migrate(conn: sqlite3.Connection) -> None:
         ("generated_decks", "deck_class", "TEXT"),
         ("generated_decks", "deck_mode",  "TEXT"),
         ("generated_decks", "user_id",    "INTEGER"),
+        ("bot_users", "image_style", "TEXT NOT NULL DEFAULT 'classic'"),
+        ("bot_users", "custom_background_kind", "TEXT"),
+        ("bot_users", "custom_background_value", "TEXT"),
+        ("bot_users", "custom_background_revision", "INTEGER NOT NULL DEFAULT 0"),
+        ("bot_users", "image_font", "TEXT NOT NULL DEFAULT 'auto'"),
+        ("bot_users", "image_text_size", "TEXT NOT NULL DEFAULT 'normal'"),
+        ("bot_users", "image_dust_display", "TEXT NOT NULL DEFAULT 'normal'"),
+        ("bot_users", "class_art_mode", "TEXT NOT NULL DEFAULT 'class'"),
+        ("bot_users", "custom_logo_path", "TEXT"),
+        ("bot_users", "personalization_revision", "INTEGER NOT NULL DEFAULT 0"),
+        ("bot_users", "custom_background_blur", "INTEGER NOT NULL DEFAULT 0"),
+        ("bot_users", "cards_per_row_normal", "INTEGER NOT NULL DEFAULT 0"),
+        ("bot_users", "cards_per_row_extended", "INTEGER NOT NULL DEFAULT 0"),
+        ("bot_users", "cards_per_row_highlander", "INTEGER NOT NULL DEFAULT 0"),
+        ("bot_users", "mana_curve_mode", "TEXT NOT NULL DEFAULT 'chart'"),
+        ("bot_users", "mana_curve_image_path", "TEXT"),
+        ("managed_chats", "custom_background_blur", "INTEGER NOT NULL DEFAULT 0"),
+        ("managed_chats", "image_text_size", "TEXT NOT NULL DEFAULT 'inherit'"),
+        ("managed_chats", "image_font", "TEXT NOT NULL DEFAULT 'inherit'"),
+        ("managed_chats", "image_dust_display", "TEXT NOT NULL DEFAULT 'inherit'"),
+        ("managed_chats", "class_art_mode", "TEXT NOT NULL DEFAULT 'inherit'"),
+        ("managed_chats", "custom_logo_path", "TEXT"),
+        ("managed_chats", "personalization_revision", "INTEGER NOT NULL DEFAULT 0"),
+        ("managed_chats", "cards_per_row_normal", "INTEGER NOT NULL DEFAULT -1"),
+        ("managed_chats", "cards_per_row_extended", "INTEGER NOT NULL DEFAULT -1"),
+        ("managed_chats", "cards_per_row_highlander", "INTEGER NOT NULL DEFAULT -1"),
+        ("managed_chats", "mana_curve_mode", "TEXT NOT NULL DEFAULT 'inherit'"),
+        ("managed_chats", "mana_curve_image_path", "TEXT"),
+        ("managed_chats", "deck_button_layout", "TEXT NOT NULL DEFAULT 'full'"),
+        ("saved_image_designs", "cards_per_row_normal", "INTEGER NOT NULL DEFAULT 0"),
+        ("saved_image_designs", "cards_per_row_extended", "INTEGER NOT NULL DEFAULT 0"),
+        ("saved_image_designs", "cards_per_row_highlander", "INTEGER NOT NULL DEFAULT 0"),
+        ("saved_image_designs", "mana_curve_mode", "TEXT NOT NULL DEFAULT 'chart'"),
+        ("saved_image_designs", "mana_curve_image_path", "TEXT"),
     ]
     for table, column, col_def in migrations:
         try:
@@ -125,6 +186,77 @@ def init_db() -> None:
                 last_seen TEXT NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS manacost_identity_links (
+                telegram_user_id INTEGER PRIMARY KEY,
+                manacost_user_id TEXT NOT NULL UNIQUE,
+                public_profile_id TEXT NOT NULL,
+                profile_url TEXT NOT NULL,
+                display_name TEXT NOT NULL,
+                has_access INTEGER NOT NULL DEFAULT 0,
+                subscription_source TEXT NOT NULL DEFAULT '',
+                subscription_checked_at TEXT,
+                subscription_stale INTEGER NOT NULL DEFAULT 0,
+                entitlements_json TEXT NOT NULL DEFAULT '{}',
+                linked_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_manacost_identity_public_profile
+                ON manacost_identity_links(public_profile_id);
+
+            CREATE TABLE IF NOT EXISTS managed_chats (
+                chat_id INTEGER PRIMARY KEY,
+                title TEXT NOT NULL DEFAULT '',
+                chat_type TEXT NOT NULL DEFAULT '',
+                added_by INTEGER,
+                is_active INTEGER NOT NULL DEFAULT 1,
+                image_style TEXT NOT NULL DEFAULT 'inherit',
+                custom_background_kind TEXT,
+                custom_background_value TEXT,
+                custom_background_revision INTEGER NOT NULL DEFAULT 0,
+                custom_background_blur INTEGER NOT NULL DEFAULT 0,
+                disabled_commands TEXT NOT NULL DEFAULT '[]',
+                deck_button_layout TEXT NOT NULL DEFAULT 'full',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_managed_chats_added_by
+                ON managed_chats(added_by, is_active);
+
+            CREATE TABLE IF NOT EXISTS managed_chat_managers (
+                chat_id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (chat_id, user_id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_managed_chat_managers_user
+                ON managed_chat_managers(user_id, chat_id);
+
+            CREATE TABLE IF NOT EXISTS saved_image_designs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                name TEXT NOT NULL COLLATE NOCASE,
+                image_style TEXT NOT NULL DEFAULT 'classic',
+                custom_background_kind TEXT,
+                custom_background_value TEXT,
+                custom_background_blur INTEGER NOT NULL DEFAULT 0,
+                image_font TEXT NOT NULL DEFAULT 'auto',
+                image_text_size TEXT NOT NULL DEFAULT 'normal',
+                image_dust_display TEXT NOT NULL DEFAULT 'normal',
+                class_art_mode TEXT NOT NULL DEFAULT 'class',
+                custom_logo_path TEXT,
+                cards_per_row_normal INTEGER NOT NULL DEFAULT 0,
+                cards_per_row_extended INTEGER NOT NULL DEFAULT 0,
+                cards_per_row_highlander INTEGER NOT NULL DEFAULT 0,
+                mana_curve_mode TEXT NOT NULL DEFAULT 'chart',
+                mana_curve_image_path TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                UNIQUE(user_id, name)
+            );
+            CREATE INDEX IF NOT EXISTS idx_saved_image_designs_user
+                ON saved_image_designs(user_id, updated_at DESC);
+
             CREATE TABLE IF NOT EXISTS publish_logs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 deck_name TEXT,
@@ -147,6 +279,23 @@ def init_db() -> None:
             );
         """)
         _migrate(conn)
+        # Anonymous group-admin messages are represented by Telegram's
+        # service bot, not by the real administrator. Never treat that service
+        # identity as the owner of a managed chat.
+        conn.execute(
+            "UPDATE managed_chats SET added_by = NULL WHERE added_by = ?",
+            (TELEGRAM_GROUP_ANONYMOUS_BOT_ID,),
+        )
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO managed_chat_managers (
+                chat_id, user_id, created_at, updated_at
+            )
+            SELECT chat_id, added_by, created_at, updated_at
+            FROM managed_chats
+            WHERE added_by IS NOT NULL
+            """
+        )
 
 
 def ensure_bot_user(user_id: int, username: Optional[str] = None, first_name: Optional[str] = None) -> None:
@@ -180,6 +329,1305 @@ def get_all_bot_user_ids() -> List[int]:
         cur = conn.execute("SELECT user_id FROM bot_users ORDER BY last_seen DESC")
         rows = cur.fetchall()
     return [r["user_id"] for r in rows]
+
+
+def get_manacost_identity(telegram_user_id: int) -> Dict[str, Any] | None:
+    with _get_conn() as conn:
+        row = conn.execute(
+            """
+            SELECT * FROM manacost_identity_links
+            WHERE telegram_user_id = ?
+            """,
+            (int(telegram_user_id),),
+        ).fetchone()
+    if not row:
+        return None
+    result = dict(row)
+    result["has_access"] = bool(result.get("has_access"))
+    result["subscription_stale"] = bool(result.get("subscription_stale"))
+    try:
+        entitlements = json.loads(result.get("entitlements_json") or "{}")
+        result["entitlements"] = (
+            entitlements if isinstance(entitlements, dict) else {}
+        )
+    except (TypeError, ValueError):
+        result["entitlements"] = {}
+    return result
+
+
+def save_manacost_identity(
+    telegram_user_id: int,
+    profile: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Persist verified public profile data, never OAuth credentials."""
+    required = (
+        "manacost_user_id",
+        "public_profile_id",
+        "profile_url",
+        "display_name",
+    )
+    normalized = {
+        key: str(profile.get(key) or "").strip()
+        for key in required
+    }
+    if any(not normalized[key] for key in required):
+        raise ValueError("Incomplete Manacost identity")
+    now = datetime.now(timezone.utc).isoformat()
+    try:
+        with _get_conn() as conn:
+            conn.execute(
+                """
+                INSERT INTO manacost_identity_links (
+                    telegram_user_id, manacost_user_id, public_profile_id,
+                    profile_url, display_name, has_access,
+                    subscription_source, subscription_checked_at,
+                    subscription_stale, entitlements_json,
+                    linked_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(telegram_user_id) DO UPDATE SET
+                    manacost_user_id = excluded.manacost_user_id,
+                    public_profile_id = excluded.public_profile_id,
+                    profile_url = excluded.profile_url,
+                    display_name = excluded.display_name,
+                    has_access = excluded.has_access,
+                    subscription_source = excluded.subscription_source,
+                    subscription_checked_at = excluded.subscription_checked_at,
+                    subscription_stale = excluded.subscription_stale,
+                    entitlements_json = excluded.entitlements_json,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    int(telegram_user_id),
+                    normalized["manacost_user_id"][:200],
+                    normalized["public_profile_id"][:200],
+                    normalized["profile_url"][:1000],
+                    normalized["display_name"][:200],
+                    1 if profile.get("has_access") else 0,
+                    str(profile.get("subscription_source") or "")[:100],
+                    (
+                        str(profile.get("subscription_checked_at") or "")[:80]
+                        or None
+                    ),
+                    1 if profile.get("subscription_stale") else 0,
+                    json.dumps(
+                        profile.get("entitlements") or {},
+                        ensure_ascii=False,
+                        separators=(",", ":"),
+                    ),
+                    now,
+                    now,
+                ),
+            )
+    except sqlite3.IntegrityError as exc:
+        raise ValueError(
+            "This Manacost identity is already linked"
+        ) from exc
+    result = get_manacost_identity(telegram_user_id)
+    if not result:
+        raise RuntimeError("Manacost identity was not saved")
+    return result
+
+
+def remove_manacost_identity(telegram_user_id: int) -> bool:
+    with _get_conn() as conn:
+        cursor = conn.execute(
+            """
+            DELETE FROM manacost_identity_links
+            WHERE telegram_user_id = ?
+            """,
+            (int(telegram_user_id),),
+        )
+        return bool(cursor.rowcount)
+
+
+def normalize_user_image_style(value: Any) -> str:
+    style = str(value or IMAGE_STYLE_CLASSIC).strip().lower()
+    return style if style in VALID_IMAGE_STYLES else IMAGE_STYLE_CLASSIC
+
+
+def normalize_user_image_font(value: Any) -> str:
+    font = str(value or "auto").strip().lower()
+    return font if font in VALID_IMAGE_FONTS else "auto"
+
+
+def normalize_user_image_text_size(value: Any, *, allow_inherit: bool = False) -> str:
+    from image_creator.text_size import normalize_title_size
+
+    return normalize_title_size(value, allow_inherit=allow_inherit)
+
+
+def normalize_background_blur(value: Any) -> int:
+    try:
+        number = float(value or 0)
+    except (TypeError, ValueError):
+        number = 0.0
+    if 0 < number <= 1:
+        number *= 100
+    number = max(0.0, min(100.0, number))
+    return min(VALID_BACKGROUND_BLURS, key=lambda level: abs(level - number))
+
+
+def get_user_image_style(user_id: int) -> str:
+    """Return the saved deck-image style, falling back to the classic design."""
+    with _get_conn() as conn:
+        row = conn.execute(
+            "SELECT image_style FROM bot_users WHERE user_id = ?",
+            (int(user_id),),
+        ).fetchone()
+    return normalize_user_image_style(row["image_style"] if row else None)
+
+
+def set_user_image_style(user_id: int, image_style: str) -> str:
+    """Persist a validated deck-image style and return its normalized value."""
+    style = normalize_user_image_style(image_style)
+    now = datetime.now(timezone.utc).isoformat()
+    with _get_conn() as conn:
+        conn.execute(
+            """
+            INSERT INTO bot_users (
+                user_id, username, first_name, first_seen, last_seen,
+                image_style, personalization_revision
+            ) VALUES (?, '', '', ?, ?, ?, 1)
+            ON CONFLICT(user_id) DO UPDATE SET
+                image_style = excluded.image_style,
+                personalization_revision =
+                    COALESCE(bot_users.personalization_revision, 0) + 1,
+                last_seen = excluded.last_seen
+            """,
+            (int(user_id), now, now, style),
+        )
+    return style
+
+
+def get_user_image_settings(user_id: int) -> Dict[str, Any]:
+    """Return the complete render theme for a user."""
+    with _get_conn() as conn:
+        row = conn.execute(
+            """
+            SELECT image_style, image_font, image_text_size,
+                   image_dust_display, class_art_mode, custom_logo_path,
+                   personalization_revision,
+                   custom_background_kind,
+                   custom_background_value, custom_background_revision,
+                   custom_background_blur,
+                   cards_per_row_normal, cards_per_row_extended,
+                   cards_per_row_highlander, mana_curve_mode,
+                   mana_curve_image_path
+            FROM bot_users WHERE user_id = ?
+            """,
+            (int(user_id),),
+        ).fetchone()
+    if not row:
+        return {
+            "style": IMAGE_STYLE_CLASSIC,
+            "font": "auto",
+            "text_size": "normal",
+            "dust_display": "normal",
+            "class_art_mode": "class",
+            "custom_logo_path": None,
+            "personalization_revision": 0,
+            "background_kind": None,
+            "background_value": None,
+            "revision": 0,
+            "blur": 0,
+            "cards_per_row_normal": 0,
+            "cards_per_row_extended": 0,
+            "cards_per_row_highlander": 0,
+            "mana_curve_mode": "chart",
+            "mana_curve_image_path": None,
+        }
+    from image_creator.personalization import (
+        normalize_class_art_mode,
+        normalize_cards_per_row,
+        normalize_dust_display,
+        normalize_mana_curve_mode,
+    )
+
+    return {
+        "style": normalize_user_image_style(row["image_style"]),
+        "font": normalize_user_image_font(row["image_font"]),
+        "text_size": normalize_user_image_text_size(row["image_text_size"]),
+        "dust_display": normalize_dust_display(row["image_dust_display"]),
+        "class_art_mode": normalize_class_art_mode(row["class_art_mode"]),
+        "custom_logo_path": row["custom_logo_path"],
+        "personalization_revision": int(row["personalization_revision"] or 0),
+        "background_kind": row["custom_background_kind"],
+        "background_value": row["custom_background_value"],
+        "revision": int(row["custom_background_revision"] or 0),
+        "blur": normalize_background_blur(row["custom_background_blur"]),
+        "cards_per_row_normal": normalize_cards_per_row(
+            row["cards_per_row_normal"]
+        ),
+        "cards_per_row_extended": normalize_cards_per_row(
+            row["cards_per_row_extended"]
+        ),
+        "cards_per_row_highlander": normalize_cards_per_row(
+            row["cards_per_row_highlander"]
+        ),
+        "mana_curve_mode": normalize_mana_curve_mode(row["mana_curve_mode"]),
+        "mana_curve_image_path": row["mana_curve_image_path"],
+    }
+
+
+def normalize_image_design_name(name: str) -> str:
+    """Validate a short user-facing preset name."""
+    normalized = " ".join(str(name or "").strip().split())
+    if not normalized:
+        raise ValueError("Design name is empty")
+    if len(normalized) > 32:
+        raise ValueError("Design name is too long")
+    return normalized
+
+
+def _save_image_design_snapshot(
+    user_id: int,
+    name: str,
+    settings: Dict[str, Any],
+) -> Dict[str, Any]:
+    normalized_name = normalize_image_design_name(name)
+    now = datetime.now(timezone.utc).isoformat()
+    with _get_conn() as conn:
+        existing = next(
+            (
+                row
+                for row in conn.execute(
+                    """
+                    SELECT id, name FROM saved_image_designs
+                    WHERE user_id = ?
+                    """,
+                    (int(user_id),),
+                ).fetchall()
+                if str(row["name"]).casefold() == normalized_name.casefold()
+            ),
+            None,
+        )
+        values = (
+            normalized_name,
+            settings["style"],
+            settings.get("background_kind"),
+            settings.get("background_value"),
+            normalize_background_blur(settings.get("blur")),
+            normalize_user_image_font(settings.get("font")),
+            normalize_user_image_text_size(settings.get("text_size")),
+            settings.get("dust_display") or "normal",
+            settings.get("class_art_mode") or "class",
+            settings.get("custom_logo_path"),
+            int(settings.get("cards_per_row_normal") or 0),
+            int(settings.get("cards_per_row_extended") or 0),
+            int(settings.get("cards_per_row_highlander") or 0),
+            settings.get("mana_curve_mode") or "chart",
+            settings.get("mana_curve_image_path"),
+        )
+        if existing:
+            conn.execute(
+                """
+                UPDATE saved_image_designs
+                SET name = ?, image_style = ?,
+                    custom_background_kind = ?,
+                    custom_background_value = ?,
+                    custom_background_blur = ?, image_font = ?,
+                    image_text_size = ?, image_dust_display = ?,
+                    class_art_mode = ?, custom_logo_path = ?,
+                    cards_per_row_normal = ?, cards_per_row_extended = ?,
+                    cards_per_row_highlander = ?, mana_curve_mode = ?,
+                    mana_curve_image_path = ?,
+                    updated_at = ?
+                WHERE id = ? AND user_id = ?
+                """,
+                (*values, now, int(existing["id"]), int(user_id)),
+            )
+            design_id = int(existing["id"])
+        else:
+            cursor = conn.execute(
+                """
+                INSERT INTO saved_image_designs (
+                    name, image_style, custom_background_kind,
+                    custom_background_value, custom_background_blur,
+                    image_font, image_text_size, image_dust_display,
+                    class_art_mode, custom_logo_path,
+                    cards_per_row_normal, cards_per_row_extended,
+                    cards_per_row_highlander, mana_curve_mode,
+                    mana_curve_image_path,
+                    created_at, updated_at, user_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (*values, now, now, int(user_id)),
+            )
+            design_id = int(cursor.lastrowid)
+        row = conn.execute(
+            """
+            SELECT * FROM saved_image_designs
+            WHERE user_id = ? AND id = ?
+            """,
+            (int(user_id), design_id),
+        ).fetchone()
+    return dict(row)
+
+
+def save_user_image_design(user_id: int, name: str) -> Dict[str, Any]:
+    """Create or replace a named snapshot of all personal image settings."""
+    return _save_image_design_snapshot(
+        user_id,
+        name,
+        get_user_image_settings(user_id),
+    )
+
+
+def save_managed_chat_image_design(
+    user_id: int,
+    chat_id: int,
+    name: str,
+) -> Dict[str, Any]:
+    """Save the effective design of one managed chat as a reusable preset."""
+    chat = get_managed_chat(chat_id)
+    if not chat:
+        raise ValueError("Managed chat was not found")
+    user = get_user_image_settings(user_id)
+    style = str(chat.get("image_style") or "inherit")
+    if style == "inherit":
+        resolved_style = user["style"]
+        background_kind = user.get("background_kind")
+        background_value = user.get("background_value")
+        blur = user.get("blur", 0)
+    elif style == "custom":
+        resolved_style = "custom"
+        background_kind = chat.get("custom_background_kind")
+        background_value = chat.get("custom_background_value")
+        blur = chat.get("custom_background_blur", 0)
+    else:
+        resolved_style = style
+        background_kind = None
+        background_value = None
+        blur = 0
+    font = str(chat.get("image_font") or "inherit")
+    text_size = str(chat.get("image_text_size") or "inherit")
+    dust = str(chat.get("image_dust_display") or "inherit")
+    class_art = str(chat.get("class_art_mode") or "inherit")
+    row_settings = {}
+    for category in ("normal", "extended", "highlander"):
+        key = f"cards_per_row_{category}"
+        chat_value = int(chat.get(key) if chat.get(key) is not None else -1)
+        row_settings[key] = user.get(key, 0) if chat_value == -1 else chat_value
+    curve_mode = str(chat.get("mana_curve_mode") or "inherit")
+    if curve_mode == "inherit":
+        resolved_curve_mode = user.get("mana_curve_mode") or "chart"
+        curve_path = user.get("mana_curve_image_path")
+    else:
+        resolved_curve_mode = curve_mode
+        curve_path = chat.get("mana_curve_image_path")
+    if class_art == "inherit":
+        resolved_class_art = user.get("class_art_mode") or "class"
+        logo_path = user.get("custom_logo_path")
+    else:
+        resolved_class_art = class_art
+        logo_path = chat.get("custom_logo_path")
+    snapshot = {
+        "style": resolved_style,
+        "background_kind": background_kind,
+        "background_value": background_value,
+        "blur": blur,
+        "font": user.get("font") if font == "inherit" else font,
+        "text_size": (
+            user.get("text_size")
+            if text_size == "inherit"
+            else text_size
+        ),
+        "dust_display": (
+            user.get("dust_display") if dust == "inherit" else dust
+        ),
+        "class_art_mode": resolved_class_art,
+        "custom_logo_path": logo_path,
+        **row_settings,
+        "mana_curve_mode": resolved_curve_mode,
+        "mana_curve_image_path": curve_path,
+    }
+    return _save_image_design_snapshot(user_id, name, snapshot)
+
+
+def get_user_image_designs(
+    user_id: int,
+    *,
+    limit: int = 20,
+) -> List[Dict[str, Any]]:
+    with _get_conn() as conn:
+        rows = conn.execute(
+            """
+            SELECT * FROM saved_image_designs
+            WHERE user_id = ?
+            ORDER BY updated_at DESC, id DESC
+            LIMIT ?
+            """,
+            (int(user_id), max(1, min(50, int(limit)))),
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def apply_user_image_design(
+    user_id: int,
+    design_id: int,
+) -> Dict[str, Any] | None:
+    """Apply one owned preset atomically and invalidate all render caches."""
+    now = datetime.now(timezone.utc).isoformat()
+    with _get_conn() as conn:
+        design = conn.execute(
+            """
+            SELECT * FROM saved_image_designs
+            WHERE id = ? AND user_id = ?
+            """,
+            (int(design_id), int(user_id)),
+        ).fetchone()
+        if not design:
+            return None
+        conn.execute(
+            """
+            UPDATE bot_users
+            SET image_style = ?,
+                custom_background_kind = ?,
+                custom_background_value = ?,
+                custom_background_blur = ?,
+                image_font = ?,
+                image_text_size = ?,
+                image_dust_display = ?,
+                class_art_mode = ?,
+                custom_logo_path = ?,
+                cards_per_row_normal = ?,
+                cards_per_row_extended = ?,
+                cards_per_row_highlander = ?,
+                mana_curve_mode = ?,
+                mana_curve_image_path = ?,
+                custom_background_revision =
+                    COALESCE(custom_background_revision, 0) + 1,
+                personalization_revision =
+                    COALESCE(personalization_revision, 0) + 1,
+                last_seen = ?
+            WHERE user_id = ?
+            """,
+            (
+                design["image_style"],
+                design["custom_background_kind"],
+                design["custom_background_value"],
+                normalize_background_blur(
+                    design["custom_background_blur"]
+                ),
+                design["image_font"],
+                design["image_text_size"],
+                design["image_dust_display"],
+                design["class_art_mode"],
+                design["custom_logo_path"],
+                design["cards_per_row_normal"],
+                design["cards_per_row_extended"],
+                design["cards_per_row_highlander"],
+                design["mana_curve_mode"],
+                design["mana_curve_image_path"],
+                now,
+                int(user_id),
+            ),
+        )
+    return get_user_image_settings(user_id)
+
+
+def delete_user_image_design(user_id: int, design_id: int) -> bool:
+    with _get_conn() as conn:
+        cursor = conn.execute(
+            """
+            DELETE FROM saved_image_designs
+            WHERE id = ? AND user_id = ?
+            """,
+            (int(design_id), int(user_id)),
+        )
+    return cursor.rowcount > 0
+
+
+def set_user_custom_background(user_id: int, kind: str, value: str) -> Dict[str, Any]:
+    """Save a validated custom background and activate the custom style."""
+    normalized_kind = str(kind or "").strip().lower()
+    if normalized_kind not in {"gradient", "image"}:
+        raise ValueError("Unsupported background kind")
+    normalized_value = str(value or "").strip()
+    if not normalized_value:
+        raise ValueError("Background value is empty")
+    now = datetime.now(timezone.utc).isoformat()
+    with _get_conn() as conn:
+        conn.execute(
+            """
+            INSERT INTO bot_users (
+                user_id, username, first_name, first_seen, last_seen,
+                image_style, custom_background_kind,
+                custom_background_value, custom_background_revision,
+                personalization_revision
+            ) VALUES (?, '', '', ?, ?, 'custom', ?, ?, 1, 1)
+            ON CONFLICT(user_id) DO UPDATE SET
+                image_style = 'custom',
+                custom_background_kind = excluded.custom_background_kind,
+                custom_background_value = excluded.custom_background_value,
+                custom_background_revision =
+                    COALESCE(bot_users.custom_background_revision, 0) + 1,
+                personalization_revision =
+                    COALESCE(bot_users.personalization_revision, 0) + 1,
+                last_seen = excluded.last_seen
+            """,
+            (int(user_id), now, now, normalized_kind, normalized_value),
+        )
+    return get_user_image_settings(user_id)
+
+
+def set_user_image_font(user_id: int, image_font: str) -> str:
+    """Persist the title font used by new deck images."""
+    font = normalize_user_image_font(image_font)
+    now = datetime.now(timezone.utc).isoformat()
+    with _get_conn() as conn:
+        conn.execute(
+            """
+            INSERT INTO bot_users (
+                user_id, username, first_name, first_seen, last_seen,
+                image_font, personalization_revision
+            ) VALUES (?, '', '', ?, ?, ?, 1)
+            ON CONFLICT(user_id) DO UPDATE SET
+                image_font = excluded.image_font,
+                personalization_revision =
+                    COALESCE(bot_users.personalization_revision, 0) + 1,
+                last_seen = excluded.last_seen
+            """,
+            (int(user_id), now, now, font),
+        )
+    return font
+
+
+def set_user_image_text_size(user_id: int, image_text_size: str) -> str:
+    """Persist the deck-title size used by new deck images."""
+    text_size = normalize_user_image_text_size(image_text_size)
+    now = datetime.now(timezone.utc).isoformat()
+    with _get_conn() as conn:
+        conn.execute(
+            """
+            INSERT INTO bot_users (
+                user_id, username, first_name, first_seen, last_seen,
+                image_text_size, personalization_revision
+            ) VALUES (?, '', '', ?, ?, ?, 1)
+            ON CONFLICT(user_id) DO UPDATE SET
+                image_text_size = excluded.image_text_size,
+                personalization_revision =
+                    COALESCE(bot_users.personalization_revision, 0) + 1,
+                last_seen = excluded.last_seen
+            """,
+            (int(user_id), now, now, text_size),
+        )
+    return text_size
+
+
+def set_user_cards_per_row(user_id: int, category: str, value: Any) -> int:
+    from image_creator.personalization import normalize_cards_per_row
+
+    columns = {
+        "normal": "cards_per_row_normal",
+        "extended": "cards_per_row_extended",
+        "highlander": "cards_per_row_highlander",
+    }
+    if category not in columns:
+        raise ValueError("Unsupported deck layout category")
+    normalized = normalize_cards_per_row(value)
+    now = datetime.now(timezone.utc).isoformat()
+    column = columns[category]
+    with _get_conn() as conn:
+        conn.execute(
+            f"""
+            INSERT INTO bot_users (
+                user_id, username, first_name, first_seen, last_seen,
+                {column}, personalization_revision
+            ) VALUES (?, '', '', ?, ?, ?, 1)
+            ON CONFLICT(user_id) DO UPDATE SET
+                {column} = excluded.{column},
+                personalization_revision =
+                    COALESCE(bot_users.personalization_revision, 0) + 1,
+                last_seen = excluded.last_seen
+            """,
+            (int(user_id), now, now, normalized),
+        )
+    return normalized
+
+
+def set_user_mana_curve_mode(user_id: int, mode: str) -> str:
+    from image_creator.personalization import normalize_mana_curve_mode
+
+    normalized = normalize_mana_curve_mode(mode)
+    current = get_user_image_settings(user_id)
+    if normalized == "image" and not current.get("mana_curve_image_path"):
+        raise ValueError("Mana curve image is not uploaded")
+    now = datetime.now(timezone.utc).isoformat()
+    with _get_conn() as conn:
+        conn.execute(
+            """
+            INSERT INTO bot_users (
+                user_id, username, first_name, first_seen, last_seen,
+                mana_curve_mode, personalization_revision
+            ) VALUES (?, '', '', ?, ?, ?, 1)
+            ON CONFLICT(user_id) DO UPDATE SET
+                mana_curve_mode = excluded.mana_curve_mode,
+                personalization_revision =
+                    COALESCE(bot_users.personalization_revision, 0) + 1,
+                last_seen = excluded.last_seen
+            """,
+            (int(user_id), now, now, normalized),
+        )
+    return normalized
+
+
+def set_user_mana_curve_image(user_id: int, path: str) -> Dict[str, Any]:
+    normalized_path = str(path or "").strip()
+    if not normalized_path:
+        raise ValueError("Mana curve image path is empty")
+    now = datetime.now(timezone.utc).isoformat()
+    with _get_conn() as conn:
+        conn.execute(
+            """
+            INSERT INTO bot_users (
+                user_id, username, first_name, first_seen, last_seen,
+                mana_curve_mode, mana_curve_image_path,
+                personalization_revision
+            ) VALUES (?, '', '', ?, ?, 'image', ?, 1)
+            ON CONFLICT(user_id) DO UPDATE SET
+                mana_curve_mode = 'image',
+                mana_curve_image_path = excluded.mana_curve_image_path,
+                personalization_revision =
+                    COALESCE(bot_users.personalization_revision, 0) + 1,
+                last_seen = excluded.last_seen
+            """,
+            (int(user_id), now, now, normalized_path),
+        )
+    return get_user_image_settings(user_id)
+
+
+def set_user_dust_display(user_id: int, display: str) -> str:
+    """Persist the dust-cost presentation used by new deck images."""
+    from image_creator.personalization import normalize_dust_display
+
+    normalized = normalize_dust_display(display)
+    now = datetime.now(timezone.utc).isoformat()
+    with _get_conn() as conn:
+        conn.execute(
+            """
+            INSERT INTO bot_users (
+                user_id, username, first_name, first_seen, last_seen,
+                image_dust_display, personalization_revision
+            ) VALUES (?, '', '', ?, ?, ?, 1)
+            ON CONFLICT(user_id) DO UPDATE SET
+                image_dust_display = excluded.image_dust_display,
+                personalization_revision =
+                    COALESCE(bot_users.personalization_revision, 0) + 1,
+                last_seen = excluded.last_seen
+            """,
+            (int(user_id), now, now, normalized),
+        )
+    return normalized
+
+
+def set_user_class_art_mode(user_id: int, mode: str) -> str:
+    """Switch between the Hearthstone class art and an uploaded logo."""
+    from image_creator.personalization import normalize_class_art_mode
+
+    normalized = normalize_class_art_mode(mode)
+    current = get_user_image_settings(user_id)
+    if normalized == "logo" and not current.get("custom_logo_path"):
+        raise ValueError("Custom logo is not uploaded")
+    now = datetime.now(timezone.utc).isoformat()
+    with _get_conn() as conn:
+        conn.execute(
+            """
+            INSERT INTO bot_users (
+                user_id, username, first_name, first_seen, last_seen,
+                class_art_mode, personalization_revision
+            ) VALUES (?, '', '', ?, ?, ?, 1)
+            ON CONFLICT(user_id) DO UPDATE SET
+                class_art_mode = excluded.class_art_mode,
+                personalization_revision =
+                    COALESCE(bot_users.personalization_revision, 0) + 1,
+                last_seen = excluded.last_seen
+            """,
+            (int(user_id), now, now, normalized),
+        )
+    return normalized
+
+
+def set_user_custom_logo(user_id: int, path: str) -> Dict[str, Any]:
+    """Save an uploaded logo path and activate it for deck renders."""
+    normalized_path = str(path or "").strip()
+    if not normalized_path:
+        raise ValueError("Logo path is empty")
+    now = datetime.now(timezone.utc).isoformat()
+    with _get_conn() as conn:
+        conn.execute(
+            """
+            INSERT INTO bot_users (
+                user_id, username, first_name, first_seen, last_seen,
+                class_art_mode, custom_logo_path, personalization_revision
+            ) VALUES (?, '', '', ?, ?, 'logo', ?, 1)
+            ON CONFLICT(user_id) DO UPDATE SET
+                class_art_mode = 'logo',
+                custom_logo_path = excluded.custom_logo_path,
+                personalization_revision =
+                    COALESCE(bot_users.personalization_revision, 0) + 1,
+                last_seen = excluded.last_seen
+            """,
+            (int(user_id), now, now, normalized_path),
+        )
+    return get_user_image_settings(user_id)
+
+
+def set_user_background_blur(user_id: int, strength: Any) -> int:
+    """Persist blur for an uploaded custom background and bust render caches."""
+    blur = normalize_background_blur(strength)
+    now = datetime.now(timezone.utc).isoformat()
+    with _get_conn() as conn:
+        conn.execute(
+            """
+            INSERT INTO bot_users (
+                user_id, username, first_name, first_seen, last_seen,
+                custom_background_blur, custom_background_revision,
+                personalization_revision
+            ) VALUES (?, '', '', ?, ?, ?, 1, 1)
+            ON CONFLICT(user_id) DO UPDATE SET
+                custom_background_blur = excluded.custom_background_blur,
+                custom_background_revision =
+                    COALESCE(bot_users.custom_background_revision, 0) + 1,
+                personalization_revision =
+                    COALESCE(bot_users.personalization_revision, 0) + 1,
+                last_seen = excluded.last_seen
+            """,
+            (int(user_id), now, now, blur),
+        )
+    return blur
+
+
+def clear_user_custom_background(user_id: int) -> None:
+    with _get_conn() as conn:
+        conn.execute(
+            """
+            UPDATE bot_users
+            SET image_style = 'parchment',
+                custom_background_kind = NULL,
+                custom_background_value = NULL,
+                custom_background_blur = 0,
+                custom_background_revision =
+                    COALESCE(custom_background_revision, 0) + 1,
+                personalization_revision =
+                    COALESCE(personalization_revision, 0) + 1
+            WHERE user_id = ?
+            """,
+            (int(user_id),),
+        )
+
+
+def register_managed_chat(
+    chat_id: int,
+    title: str,
+    chat_type: str,
+    added_by: int | None,
+    *,
+    is_active: bool = True,
+) -> None:
+    now = datetime.now(timezone.utc).isoformat()
+    manager_id = (
+        int(added_by)
+        if added_by is not None
+        and int(added_by) != TELEGRAM_GROUP_ANONYMOUS_BOT_ID
+        else None
+    )
+    with _get_conn() as conn:
+        conn.execute(
+            """
+            INSERT INTO managed_chats (
+                chat_id, title, chat_type, added_by, is_active,
+                created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(chat_id) DO UPDATE SET
+                title = excluded.title,
+                chat_type = excluded.chat_type,
+                added_by = COALESCE(excluded.added_by, managed_chats.added_by),
+                is_active = excluded.is_active,
+                updated_at = excluded.updated_at
+            """,
+            (
+                int(chat_id),
+                str(title or "").strip(),
+                str(chat_type or "").strip(),
+                manager_id,
+                1 if is_active else 0,
+                now,
+                now,
+            ),
+        )
+        if manager_id is not None:
+            conn.execute(
+                """
+                INSERT INTO managed_chat_managers (
+                    chat_id, user_id, created_at, updated_at
+                ) VALUES (?, ?, ?, ?)
+                ON CONFLICT(chat_id, user_id) DO UPDATE SET
+                    updated_at = excluded.updated_at
+                """,
+                (int(chat_id), manager_id, now, now),
+            )
+
+
+def get_managed_chat(chat_id: int) -> Dict[str, Any] | None:
+    with _get_conn() as conn:
+        row = conn.execute(
+            "SELECT * FROM managed_chats WHERE chat_id = ?",
+            (int(chat_id),),
+        ).fetchone()
+    if not row:
+        return None
+    result = dict(row)
+    try:
+        result["disabled_commands"] = list(
+            json.loads(result.get("disabled_commands") or "[]")
+        )
+    except (TypeError, ValueError):
+        result["disabled_commands"] = []
+    return result
+
+
+def get_managed_chats_for_user(user_id: int) -> List[Dict[str, Any]]:
+    with _get_conn() as conn:
+        rows = conn.execute(
+            """
+            SELECT managed_chats.*
+            FROM managed_chats
+            WHERE managed_chats.is_active = 1
+              AND (
+                    managed_chats.added_by = ?
+                    OR EXISTS (
+                        SELECT 1
+                        FROM managed_chat_managers
+                        WHERE managed_chat_managers.chat_id =
+                                managed_chats.chat_id
+                          AND managed_chat_managers.user_id = ?
+                    )
+              )
+            ORDER BY managed_chats.updated_at DESC
+            """,
+            (int(user_id), int(user_id)),
+        ).fetchall()
+    result = []
+    for row in rows:
+        item = dict(row)
+        try:
+            item["disabled_commands"] = list(
+                json.loads(item.get("disabled_commands") or "[]")
+            )
+        except (TypeError, ValueError):
+            item["disabled_commands"] = []
+        result.append(item)
+    return result
+
+
+def set_managed_chat_image_style(chat_id: int, image_style: str) -> str:
+    raw_style = str(image_style or "").strip().lower()
+    style = raw_style if raw_style in {*VALID_IMAGE_STYLES, "inherit"} else "inherit"
+    with _get_conn() as conn:
+        conn.execute(
+            """
+            UPDATE managed_chats
+            SET image_style = ?,
+                personalization_revision =
+                    COALESCE(personalization_revision, 0) + 1,
+                updated_at = ?
+            WHERE chat_id = ?
+            """,
+            (style, datetime.now(timezone.utc).isoformat(), int(chat_id)),
+        )
+    return style
+
+
+def set_managed_chat_custom_background(
+    chat_id: int, kind: str, value: str
+) -> Dict[str, Any] | None:
+    normalized_kind = str(kind or "").strip().lower()
+    if normalized_kind not in {"gradient", "image"}:
+        raise ValueError("Unsupported background kind")
+    normalized_value = str(value or "").strip()
+    if not normalized_value:
+        raise ValueError("Background value is empty")
+    with _get_conn() as conn:
+        conn.execute(
+            """
+            UPDATE managed_chats
+            SET image_style = 'custom',
+                custom_background_kind = ?,
+                custom_background_value = ?,
+                custom_background_revision =
+                    COALESCE(custom_background_revision, 0) + 1,
+                personalization_revision =
+                    COALESCE(personalization_revision, 0) + 1,
+                updated_at = ?
+            WHERE chat_id = ?
+            """,
+            (
+                normalized_kind,
+                normalized_value,
+                datetime.now(timezone.utc).isoformat(),
+                int(chat_id),
+            ),
+        )
+    return get_managed_chat(chat_id)
+
+
+def set_managed_chat_background_blur(chat_id: int, strength: Any) -> int:
+    """Persist blur for a managed chat's uploaded background."""
+    blur = normalize_background_blur(strength)
+    with _get_conn() as conn:
+        conn.execute(
+            """
+            UPDATE managed_chats
+            SET custom_background_blur = ?,
+                custom_background_revision =
+                    COALESCE(custom_background_revision, 0) + 1,
+                personalization_revision =
+                    COALESCE(personalization_revision, 0) + 1,
+                updated_at = ?
+            WHERE chat_id = ?
+            """,
+            (
+                blur,
+                datetime.now(timezone.utc).isoformat(),
+                int(chat_id),
+            ),
+        )
+    return blur
+
+
+def set_managed_chat_image_text_size(chat_id: int, image_text_size: str) -> str:
+    """Persist a title-size override for one managed group chat."""
+    text_size = normalize_user_image_text_size(
+        image_text_size,
+        allow_inherit=True,
+    )
+    with _get_conn() as conn:
+        conn.execute(
+            """
+            UPDATE managed_chats
+            SET image_text_size = ?,
+                personalization_revision =
+                    COALESCE(personalization_revision, 0) + 1,
+                updated_at = ?
+            WHERE chat_id = ?
+            """,
+            (
+                text_size,
+                datetime.now(timezone.utc).isoformat(),
+                int(chat_id),
+            ),
+        )
+    return text_size
+
+
+def set_managed_chat_cards_per_row(
+    chat_id: int, category: str, value: Any
+) -> int:
+    from image_creator.personalization import normalize_cards_per_row
+
+    columns = {
+        "normal": "cards_per_row_normal",
+        "extended": "cards_per_row_extended",
+        "highlander": "cards_per_row_highlander",
+    }
+    if category not in columns:
+        raise ValueError("Unsupported deck layout category")
+    normalized = normalize_cards_per_row(value, allow_inherit=True)
+    column = columns[category]
+    with _get_conn() as conn:
+        conn.execute(
+            f"""
+            UPDATE managed_chats
+            SET {column} = ?,
+                personalization_revision =
+                    COALESCE(personalization_revision, 0) + 1,
+                updated_at = ?
+            WHERE chat_id = ?
+            """,
+            (normalized, datetime.now(timezone.utc).isoformat(), int(chat_id)),
+        )
+    return normalized
+
+
+def set_managed_chat_mana_curve_mode(chat_id: int, mode: str) -> str:
+    from image_creator.personalization import normalize_mana_curve_mode
+
+    normalized = normalize_mana_curve_mode(mode, allow_inherit=True)
+    current = get_managed_chat(chat_id)
+    if normalized == "image" and not (
+        current and current.get("mana_curve_image_path")
+    ):
+        raise ValueError("Mana curve image is not uploaded")
+    with _get_conn() as conn:
+        conn.execute(
+            """
+            UPDATE managed_chats
+            SET mana_curve_mode = ?,
+                personalization_revision =
+                    COALESCE(personalization_revision, 0) + 1,
+                updated_at = ?
+            WHERE chat_id = ?
+            """,
+            (normalized, datetime.now(timezone.utc).isoformat(), int(chat_id)),
+        )
+    return normalized
+
+
+def set_managed_chat_mana_curve_image(
+    chat_id: int, path: str
+) -> Dict[str, Any] | None:
+    normalized_path = str(path or "").strip()
+    if not normalized_path:
+        raise ValueError("Mana curve image path is empty")
+    with _get_conn() as conn:
+        conn.execute(
+            """
+            UPDATE managed_chats
+            SET mana_curve_mode = 'image', mana_curve_image_path = ?,
+                personalization_revision =
+                    COALESCE(personalization_revision, 0) + 1,
+                updated_at = ?
+            WHERE chat_id = ?
+            """,
+            (
+                normalized_path,
+                datetime.now(timezone.utc).isoformat(),
+                int(chat_id),
+            ),
+        )
+    return get_managed_chat(chat_id)
+
+
+def set_managed_chat_deck_button_layout(chat_id: int, layout: str) -> str:
+    from deck_buttons import normalize_deck_button_layout
+
+    normalized = normalize_deck_button_layout(layout)
+    with _get_conn() as conn:
+        conn.execute(
+            """
+            UPDATE managed_chats
+            SET deck_button_layout = ?, updated_at = ?
+            WHERE chat_id = ?
+            """,
+            (
+                normalized,
+                datetime.now(timezone.utc).isoformat(),
+                int(chat_id),
+            ),
+        )
+    return normalized
+
+
+def set_managed_chat_image_font(chat_id: int, image_font: str) -> str:
+    raw = str(image_font or "").strip().lower()
+    font = (
+        "inherit"
+        if raw == "inherit"
+        else normalize_user_image_font(raw)
+    )
+    with _get_conn() as conn:
+        conn.execute(
+            """
+            UPDATE managed_chats
+            SET image_font = ?,
+                personalization_revision =
+                    COALESCE(personalization_revision, 0) + 1,
+                updated_at = ?
+            WHERE chat_id = ?
+            """,
+            (
+                font,
+                datetime.now(timezone.utc).isoformat(),
+                int(chat_id),
+            ),
+        )
+    return font
+
+
+def set_managed_chat_dust_display(chat_id: int, display: str) -> str:
+    from image_creator.personalization import normalize_dust_display
+
+    raw = str(display or "").strip().lower()
+    normalized = (
+        "inherit"
+        if raw == "inherit"
+        else normalize_dust_display(raw)
+    )
+    with _get_conn() as conn:
+        conn.execute(
+            """
+            UPDATE managed_chats
+            SET image_dust_display = ?,
+                personalization_revision =
+                    COALESCE(personalization_revision, 0) + 1,
+                updated_at = ?
+            WHERE chat_id = ?
+            """,
+            (
+                normalized,
+                datetime.now(timezone.utc).isoformat(),
+                int(chat_id),
+            ),
+        )
+    return normalized
+
+
+def set_managed_chat_class_art_mode(chat_id: int, mode: str) -> str:
+    raw = str(mode or "").strip().lower()
+    normalized = raw if raw in {"inherit", "class", "logo"} else "inherit"
+    current = get_managed_chat(chat_id)
+    if normalized == "logo" and not (
+        current and current.get("custom_logo_path")
+    ):
+        raise ValueError("Custom logo is not uploaded")
+    with _get_conn() as conn:
+        conn.execute(
+            """
+            UPDATE managed_chats
+            SET class_art_mode = ?,
+                personalization_revision =
+                    COALESCE(personalization_revision, 0) + 1,
+                updated_at = ?
+            WHERE chat_id = ?
+            """,
+            (
+                normalized,
+                datetime.now(timezone.utc).isoformat(),
+                int(chat_id),
+            ),
+        )
+    return normalized
+
+
+def set_managed_chat_custom_logo(
+    chat_id: int,
+    path: str,
+) -> Dict[str, Any] | None:
+    normalized_path = str(path or "").strip()
+    if not normalized_path:
+        raise ValueError("Logo path is empty")
+    with _get_conn() as conn:
+        conn.execute(
+            """
+            UPDATE managed_chats
+            SET class_art_mode = 'logo',
+                custom_logo_path = ?,
+                personalization_revision =
+                    COALESCE(personalization_revision, 0) + 1,
+                updated_at = ?
+            WHERE chat_id = ?
+            """,
+            (
+                normalized_path,
+                datetime.now(timezone.utc).isoformat(),
+                int(chat_id),
+            ),
+        )
+    return get_managed_chat(chat_id)
+
+
+def apply_user_image_design_to_chat(
+    user_id: int,
+    design_id: int,
+    chat_id: int,
+) -> Dict[str, Any] | None:
+    """Apply one of an admin's saved designs as explicit chat settings."""
+    now = datetime.now(timezone.utc).isoformat()
+    with _get_conn() as conn:
+        design = conn.execute(
+            """
+            SELECT * FROM saved_image_designs
+            WHERE id = ? AND user_id = ?
+            """,
+            (int(design_id), int(user_id)),
+        ).fetchone()
+        chat = conn.execute(
+            "SELECT 1 FROM managed_chats WHERE chat_id = ?",
+            (int(chat_id),),
+        ).fetchone()
+        if not design or not chat:
+            return None
+        conn.execute(
+            """
+            UPDATE managed_chats
+            SET image_style = ?,
+                custom_background_kind = ?,
+                custom_background_value = ?,
+                custom_background_blur = ?,
+                image_font = ?,
+                image_text_size = ?,
+                image_dust_display = ?,
+                class_art_mode = ?,
+                custom_logo_path = ?,
+                cards_per_row_normal = ?,
+                cards_per_row_extended = ?,
+                cards_per_row_highlander = ?,
+                mana_curve_mode = ?,
+                mana_curve_image_path = ?,
+                custom_background_revision =
+                    COALESCE(custom_background_revision, 0) + 1,
+                personalization_revision =
+                    COALESCE(personalization_revision, 0) + 1,
+                updated_at = ?
+            WHERE chat_id = ?
+            """,
+            (
+                design["image_style"],
+                design["custom_background_kind"],
+                design["custom_background_value"],
+                normalize_background_blur(
+                    design["custom_background_blur"]
+                ),
+                design["image_font"],
+                design["image_text_size"],
+                design["image_dust_display"],
+                design["class_art_mode"],
+                design["custom_logo_path"],
+                design["cards_per_row_normal"],
+                design["cards_per_row_extended"],
+                design["cards_per_row_highlander"],
+                design["mana_curve_mode"],
+                design["mana_curve_image_path"],
+                now,
+                int(chat_id),
+            ),
+        )
+    return get_managed_chat(chat_id)
+
+
+def set_managed_chat_disabled_commands(
+    chat_id: int, commands: List[str]
+) -> List[str]:
+    normalized = sorted(
+        {
+            str(command or "").strip().lower().lstrip("/")
+            for command in commands
+            if str(command or "").strip()
+        }
+    )
+    with _get_conn() as conn:
+        conn.execute(
+            """
+            UPDATE managed_chats
+            SET disabled_commands = ?, updated_at = ?
+            WHERE chat_id = ?
+            """,
+            (
+                json.dumps(normalized, ensure_ascii=False),
+                datetime.now(timezone.utc).isoformat(),
+                int(chat_id),
+            ),
+        )
+    return normalized
+
+
+def is_managed_chat_command_enabled(chat_id: int, command: str) -> bool:
+    chat = get_managed_chat(chat_id)
+    if not chat or not chat.get("is_active"):
+        return True
+    normalized = str(command or "").strip().lower().lstrip("/")
+    return normalized not in set(chat.get("disabled_commands") or [])
 
 
 def save_deck_for_user(user_id: int, generated_deck_id: int) -> bool:
@@ -254,7 +1702,14 @@ def find_cached(deck_code: str, deck_name: Optional[str]) -> Optional[Dict[str, 
             """
             SELECT filename, cost, deck_code, deck_name, created_at
             FROM generated_decks
-            WHERE deck_code = ? AND COALESCE(deck_name, '') = ? AND created_at >= ?
+            WHERE deck_code = ?
+              AND COALESCE(deck_name, '') = ?
+              AND created_at >= ?
+              AND (
+                    source IS NULL
+                    OR source NOT LIKE 'api:%'
+                    OR source IN ('api', 'api:classic')
+                  )
             ORDER BY created_at DESC
             LIMIT 1
             """,

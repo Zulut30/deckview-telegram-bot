@@ -32,3 +32,13 @@ def get_http_session() -> requests.Session:
             s.mount("http://", adapter)
             _session = s
         return _session
+
+
+def reset_http_session() -> None:
+    """Close the current pool so forked workers create process-local sessions."""
+    global _session
+    with _lock:
+        session = _session
+        _session = None
+    if session is not None:
+        session.close()

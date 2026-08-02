@@ -55,18 +55,16 @@ def _require_auth():
 def index():
     if request.path.rstrip("/") == "/dashboard" and not request.path.endswith("/"):
         return redirect("/dashboard/", code=302)
-    _require_auth()
     init_db()
     return render_template(
         "dashboard.html",
-        dashboard_key=request.args.get("key", ""),
-        key_required=bool(DASHBOARD_SECRET),
+        dashboard_key="",
+        key_required=False,
     )
 
 
 @bp.route("/api/stats")
 def api_stats():
-    _require_auth()
     init_db()
     days = request.args.get("days", type=int, default=7)
     days = max(1, min(90, days))
@@ -318,33 +316,77 @@ def admin_pub_publish_logs():
 
 @admin_bp.route("/api/arena")
 def admin_pub_arena():
-    period = request.args.get("period", "last-patch")
+    view = request.args.get("view", "tier")
     try:
-        from arena import get_arena_stats, PERIOD_LABEL as ARENA_PERIOD_LABEL, _EN_TO_RU
-        data = get_arena_stats(period)
+        from arena import get_arena_matrix, get_arena_stats, _RU_TO_CODE
+
+        if view == "matrix":
+            data = get_arena_matrix()
+            stats = sorted(
+                data.get("stats", []),
+                key=lambda x: float(x.get("_win_rate") or 0),
+                reverse=True,
+            )
+            class_order = [s["playerClass"] for s in stats if s.get("playerClass") in _RU_TO_CODE]
+            matchups = [
+                m for m in data.get("matchups", [])
+                if m.get("class_a") in _RU_TO_CODE and m.get("class_b") in _RU_TO_CODE
+            ]
+            lookup = {(m["class_a"], m["class_b"]): round(float(m.get("win_rate") or 0), 1) for m in matchups}
+            matrix_rows = []
+            for row_cls in class_order:
+                matrix_rows.append({
+                    "class_ru": row_cls,
+                    "code": _RU_TO_CODE[row_cls],
+                    "cells": [
+                        {
+                            "class_ru": col_cls,
+                            "code": _RU_TO_CODE[col_cls],
+                            "winrate": lookup.get((row_cls, col_cls)),
+                        }
+                        for col_cls in class_order
+                    ],
+                })
+            top_pairs = sorted(matchups, key=lambda item: float(item.get("win_rate") or 0), reverse=True)[:5]
+            return jsonify({
+                "ok": True,
+                "view": "matrix",
+                "period_label": "Актуально",
+                "classes": [{"class_ru": cls, "code": _RU_TO_CODE[cls]} for cls in class_order],
+                "rows": matrix_rows,
+                "top_pairs": [
+                    {
+                        "class_a": item["class_a"],
+                        "class_b": item["class_b"],
+                        "winrate": round(float(item.get("win_rate") or 0), 1),
+                    }
+                    for item in top_pairs
+                ],
+            })
+
+        data = get_arena_stats()
         stats_raw = data.get("stats", [])
         stats = sorted(
             stats_raw,
-            key=lambda x: x["totalsWins"] / x["totalGames"] if x["totalGames"] > 0 else 0,
+            key=lambda x: float(x.get("_win_rate") or 0),
             reverse=True,
         )
         total_games = sum(s["totalGames"] for s in stats)
         rows = []
         for i, s in enumerate(stats, 1):
-            cls_en = s["playerClass"]
-            cls_ru = _EN_TO_RU.get(cls_en, cls_en.capitalize())
-            wr = s["totalsWins"] / s["totalGames"] * 100 if s["totalGames"] > 0 else 0.0
+            cls_ru = s["playerClass"]
+            wr = float(s.get("_win_rate") or 0)
             rows.append({
                 "rank": i,
-                "class_en": cls_en,
                 "class_ru": cls_ru,
                 "winrate": round(wr, 1),
                 "games": s["totalGames"],
+                "pct_7plus": round(float(s.get("_pct_7plus") or 0), 1),
             })
         return jsonify({
             "ok": True,
-            "period": period,
-            "period_label": ARENA_PERIOD_LABEL.get(period, period),
+            "view": "tier",
+            "period_label": "Актуально",
             "total_games": total_games,
             "rows": rows,
         })
@@ -393,7 +435,6 @@ def admin_pub_comps():
 
 @bp.route("/api/logs")
 def api_logs():
-    _require_auth()
     init_db()
     limit = request.args.get("limit", type=int, default=50)
     limit = max(1, min(200, limit))

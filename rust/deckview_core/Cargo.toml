@@ -1,0 +1,15 @@
+[package]
+name = "deckview_core"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "deckview_core"
+crate-type = ["cdylib"]
+
+[dependencies]
+image = { version = "0.24.9", default-features = false, features = ["png", "jpeg"] }
+imageproc = "0.23.0"
+libc = "=0.2.153"
+pyo3 = { version = "0.18.3", features = ["extension-module"] }
+rusttype = "0.9.3"

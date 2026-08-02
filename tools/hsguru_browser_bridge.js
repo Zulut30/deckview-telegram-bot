@@ -5,6 +5,7 @@
  * 1. Open https://www.hsguru.com/streamer-decks in a browser that already passes Cloudflare.
  * 2. Paste this script into DevTools Console.
  * 3. Run it. The script asks for API_TOKEN once and stores it in localStorage.
+ *    With API_TOKEN it asks for confirmation before publishing.
  *
  * This does not solve or bypass Cloudflare. It sends data from an already
  * authorized browser session to Deckview, where the normal parser/filter/publish
@@ -13,7 +14,6 @@
 (async () => {
   const INGEST_URL = "https://api.blizzcore.ru/v1/hsguru/ingest";
   const STAGE_URL = "https://api.blizzcore.ru/v1/hsguru/stage";
-  const DRY_RUN = true;
   const LIMIT = 0;
   const TOKEN_STORAGE_KEY = "manacostDeckviewApiToken";
 
@@ -25,6 +25,9 @@
   apiKey = (apiKey || "").trim();
   const stageOnly = !apiKey;
   const apiUrl = stageOnly ? STAGE_URL : INGEST_URL;
+  const dryRun = stageOnly
+    ? true
+    : !confirm("Опубликовать найденные новые колоды в WordPress/Telegram? Отмена = только проверка без публикации.");
 
   const text = (node) => (node ? node.textContent.replace(/\s+/g, " ").trim() : "");
   const cleanDeckName = (value) => String(value || "")
@@ -85,8 +88,8 @@
   );
 
   const body = decks.length
-    ? { decks, dry_run: stageOnly ? true : DRY_RUN, limit: LIMIT }
-    : { html: document.documentElement.outerHTML, dry_run: stageOnly ? true : DRY_RUN, limit: LIMIT };
+    ? { decks, dry_run: dryRun, limit: LIMIT }
+    : { html: document.documentElement.outerHTML, dry_run: dryRun, limit: LIMIT };
 
   const headers = {"Content-Type": "application/json"};
   if (apiKey) {

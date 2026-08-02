@@ -1,1439 +1,1815 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>DeckView Admin</title>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>DeckView — Admin</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <style>
-    /* ── Reset & tokens ─────────────────────────────────── */
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-    :root {
-      --bg:        #F7F8FA;
-      --surface:   #FFFFFF;
-      --border:    #E4E7EB;
-      --text:      #111827;
-      --muted:     #6B7280;
-      --accent:    #111827;
-      --accent-lt: #F3F4F6;
-      --green:     #16A34A;
-      --red:       #DC2626;
-      --blue:      #2563EB;
-      --amber:     #D97706;
-      --shadow:    0 1px 3px rgba(0,0,0,.07), 0 1px 2px rgba(0,0,0,.04);
-      --radius:    10px;
-      --font:      -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, sans-serif;
-      --grid:      #F3F4F6;
-      --tick:      #9CA3AF;
+    /* ── Tokens ──────────────────────────────────────────── */
+    :root{
+      --bg:       #0f1117;
+      --surface:  #1a1d27;
+      --border:   #2a2d3a;
+      --text:     #e4e4e7;
+      --muted:    #8b8d98;
+      --accent:   #3b82f6;
+      --lt:       #22252f;
+      --green:    #22c55e;
+      --red:      #ef4444;
+      --blue:     #3b82f6;
+      --amber:    #f59e0b;
+      --r:        10px;
+      --sh:       0 1px 3px rgba(0,0,0,.3),0 1px 2px rgba(0,0,0,.2);
+      --font:     -apple-system,BlinkMacSystemFont,'Inter','Segoe UI',Roboto,sans-serif;
     }
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+    body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:14px;line-height:1.55;}
 
-    html[data-theme="dark"] {
-      --bg:        #0F1115;
-      --surface:   #161A22;
-      --border:    #262C36;
-      --text:      #E5E7EB;
-      --muted:     #9AA3B2;
-      --accent:    #E5E7EB;
-      --accent-lt: #1F2530;
-      --green:     #22C55E;
-      --red:       #F87171;
-      --blue:      #60A5FA;
-      --amber:     #FBBF24;
-      --shadow:    0 1px 3px rgba(0,0,0,.4), 0 1px 2px rgba(0,0,0,.3);
-      --grid:      #1F2530;
-      --tick:      #6B7280;
-    }
-    html[data-theme="dark"] .btn-primary { color: #0F1115; }
-
-    body {
-      font-family: var(--font);
-      background: var(--bg);
-      color: var(--text);
-      font-size: 14px;
-      line-height: 1.55;
-    }
-
-    a { color: var(--blue); text-decoration: none; }
-    a:hover { text-decoration: underline; }
-
-    /* ── Layout ─────────────────────────────────────────── */
-    .shell { display: flex; min-height: 100vh; }
+    /* ── Layout ──────────────────────────────────────────── */
+    .shell{display:flex;min-height:100vh;}
 
     /* ── Sidebar ─────────────────────────────────────────── */
-    .sidebar {
-      width: 220px;
-      min-width: 220px;
-      background: var(--surface);
-      border-right: 1px solid var(--border);
-      display: flex;
-      flex-direction: column;
-      padding: 0;
-      position: sticky;
-      top: 0;
-      height: 100vh;
-      overflow-y: auto;
+    .sb{
+      width:220px;min-width:220px;background:var(--surface);
+      border-right:1px solid var(--border);display:flex;flex-direction:column;
+      position:sticky;top:0;height:100vh;overflow-y:auto;
     }
+    .sb-logo{padding:20px 20px 16px;border-bottom:1px solid var(--border);}
+    .sb-logo .name{font-size:15px;font-weight:700;letter-spacing:-.3px;}
+    .sb-logo .sub{font-size:11px;color:var(--muted);margin-top:2px;}
+    .sb-nav{padding:12px 8px;flex:1;}
+    .nl{font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;
+        color:var(--muted);padding:10px 12px 4px;}
+    .ni{
+      display:flex;align-items:center;gap:9px;padding:8px 12px;border-radius:7px;
+      cursor:pointer;color:var(--muted);font-size:13.5px;font-weight:500;
+      transition:background .12s,color .12s;user-select:none;
+    }
+    .ni:hover{background:var(--lt);color:var(--text);}
+    .ni.active{background:var(--accent);color:#fff;}
+    .ni .ic{width:16px;text-align:center;flex-shrink:0;}
+    .sb-foot{padding:14px 20px;border-top:1px solid var(--border);font-size:11px;color:var(--muted);}
 
-    .sidebar-logo {
-      padding: 20px 20px 16px;
-      border-bottom: 1px solid var(--border);
+    /* ── Topbar ──────────────────────────────────────────── */
+    .topbar{
+      background:var(--surface);border-bottom:1px solid var(--border);
+      padding:14px 28px;display:flex;align-items:center;justify-content:space-between;
+      position:sticky;top:0;z-index:10;
     }
-    .sidebar-logo .logo-name {
-      font-size: 15px;
-      font-weight: 700;
-      letter-spacing: -.3px;
-      color: var(--text);
+    .topbar-title{font-size:15px;font-weight:600;}
+    .btn{
+      padding:6px 14px;border-radius:7px;border:1px solid var(--border);
+      background:var(--surface);color:var(--text);font-size:13px;font-weight:500;
+      cursor:pointer;transition:background .12s;
     }
-    .sidebar-logo .logo-sub {
-      font-size: 11px;
-      color: var(--muted);
-      margin-top: 2px;
-    }
+    .btn:hover{background:var(--lt);}
+    .btn-sm{padding:4px 10px;font-size:12px;}
 
-    .sidebar-nav {
-      padding: 12px 8px;
-      flex: 1;
-    }
-    .nav-label {
-      font-size: 10px;
-      font-weight: 600;
-      letter-spacing: .08em;
-      text-transform: uppercase;
-      color: var(--muted);
-      padding: 8px 12px 4px;
-    }
-    .nav-item {
-      display: flex;
-      align-items: center;
-      gap: 9px;
-      padding: 8px 12px;
-      border-radius: 7px;
-      cursor: pointer;
-      color: var(--muted);
-      font-size: 13.5px;
-      font-weight: 500;
-      transition: background .12s, color .12s;
-      user-select: none;
-    }
-    .nav-item:hover { background: var(--accent-lt); color: var(--text); }
-    .nav-item.active { background: var(--accent); color: #fff; }
-    .nav-item .icon { width: 16px; text-align: center; flex-shrink: 0; }
+    /* ── Content ─────────────────────────────────────────── */
+    .main{flex:1;display:flex;flex-direction:column;min-width:0;}
+    .content{padding:28px;flex:1;}
+    .page{display:none;}
+    .page.active{display:block;}
 
-    .sidebar-footer {
-      padding: 14px 20px;
-      border-top: 1px solid var(--border);
-      font-size: 11px;
-      color: var(--muted);
+    /* ── Stat cards ──────────────────────────────────────── */
+    .sg{display:grid;grid-template-columns:repeat(auto-fill,minmax(155px,1fr));gap:14px;margin-bottom:28px;}
+    .sc{
+      background:var(--surface);border:1px solid var(--border);border-radius:var(--r);
+      padding:18px 20px;box-shadow:var(--sh);
     }
+    .sc .lbl{font-size:10px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);margin-bottom:6px;}
+    .sc .val{font-size:28px;font-weight:700;line-height:1;}
+    .sc .sub{font-size:11px;color:var(--muted);margin-top:4px;}
+    .sc.g .val{color:var(--green);}
+    .sc.r .val{color:var(--red);}
+    .sc.b .val{color:var(--blue);}
+    .sc.a .val{color:var(--amber);}
 
-    /* ── Main ───────────────────────────────────────────── */
-    .main {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      min-width: 0;
-    }
+    /* ── Charts ──────────────────────────────────────────── */
+    .cg{display:grid;gap:14px;margin-bottom:28px;}
+    .cg-2{grid-template-columns:2fr 1fr;}
+    .cg-3{grid-template-columns:repeat(3,1fr);}
+    .cg-1{grid-template-columns:1fr;}
+    .cc{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:20px;box-shadow:var(--sh);}
+    .cc h3{font-size:13px;font-weight:600;margin-bottom:16px;}
+    .cc canvas{max-height:220px;}
 
-    .topbar {
-      background: var(--surface);
-      border-bottom: 1px solid var(--border);
-      padding: 14px 28px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      position: sticky;
-      top: 0;
-      z-index: 10;
+    /* ── Section ─────────────────────────────────────────── */
+    .sec{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);box-shadow:var(--sh);overflow:hidden;margin-bottom:28px;}
+    .sec-hd{
+      padding:14px 20px;border-bottom:1px solid var(--border);
+      display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;
     }
-    .topbar-title { font-size: 15px; font-weight: 600; }
-    .topbar-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-
-    /* ── Mobile hamburger ───────────────────────────────── */
-    .menu-toggle {
-      display: none;
-      background: none;
-      border: 1px solid var(--border);
-      border-radius: 7px;
-      padding: 6px 10px;
-      font-size: 16px;
-      color: var(--text);
-      cursor: pointer;
+    .sec-hd h3{font-size:13px;font-weight:600;}
+    .tb{display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
+    .tb input,.tb select{
+      padding:6px 10px;border:1px solid var(--border);border-radius:7px;
+      background:var(--surface);color:var(--text);font-size:13px;outline:none;
     }
-
-    /* ── Toggle / icon button ───────────────────────────── */
-    .icon-btn {
-      width: 32px; height: 32px;
-      display: inline-flex; align-items: center; justify-content: center;
-      border-radius: 7px;
-      border: 1px solid var(--border);
-      background: var(--surface);
-      color: var(--text);
-      cursor: pointer;
-      font-size: 14px;
-      transition: background .12s;
-    }
-    .icon-btn:hover { background: var(--accent-lt); }
-    .icon-btn.on { background: var(--accent); color: var(--surface); border-color: var(--accent); }
-
-    /* ── Skeleton loaders ───────────────────────────────── */
-    @keyframes shimmer { 0% { background-position: -200px 0; } 100% { background-position: 200px 0; } }
-    .skeleton {
-      display: inline-block;
-      background: linear-gradient(90deg, var(--accent-lt) 25%, var(--border) 50%, var(--accent-lt) 75%);
-      background-size: 400px 100%;
-      animation: shimmer 1.2s infinite linear;
-      border-radius: 4px;
-      color: transparent;
-      min-width: 40px;
-    }
-
-    /* ── Mobile responsive ──────────────────────────────── */
-    @media (max-width: 800px) {
-      .sidebar {
-        position: fixed;
-        left: -240px;
-        z-index: 100;
-        transition: left .2s ease;
-      }
-      .sidebar.open { left: 0; box-shadow: 0 0 30px rgba(0,0,0,.3); }
-      .menu-toggle { display: inline-flex; }
-      .content { padding: 16px; }
-      .topbar { padding: 12px 16px; }
-      .chart-grid { grid-template-columns: 1fr !important; }
-      .stat-grid { grid-template-columns: repeat(2, 1fr); }
-    }
-    .scrim {
-      display: none;
-      position: fixed; inset: 0;
-      background: rgba(0,0,0,.4);
-      z-index: 90;
-    }
-    .scrim.show { display: block; }
-    .btn {
-      padding: 6px 14px;
-      border-radius: 7px;
-      border: 1px solid var(--border);
-      background: var(--surface);
-      color: var(--text);
-      font-size: 13px;
-      font-weight: 500;
-      cursor: pointer;
-      transition: background .12s;
-    }
-    .btn:hover { background: var(--accent-lt); }
-    .btn-primary { background: var(--accent); color: #fff; border-color: var(--accent); }
-    .btn-primary:hover { opacity: .88; background: var(--accent); }
-
-    .content {
-      padding: 28px;
-      flex: 1;
-    }
-
-    /* ── Pages ───────────────────────────────────────────── */
-    .page { display: none; }
-    .page.active { display: block; }
-
-    /* ── Stat cards ─────────────────────────────────────── */
-    .stat-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-      gap: 14px;
-      margin-bottom: 28px;
-    }
-    .stat-card {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 18px 20px;
-      box-shadow: var(--shadow);
-    }
-    .stat-card .sc-label {
-      font-size: 11px;
-      font-weight: 600;
-      letter-spacing: .07em;
-      text-transform: uppercase;
-      color: var(--muted);
-      margin-bottom: 6px;
-    }
-    .stat-card .sc-value {
-      font-size: 28px;
-      font-weight: 700;
-      color: var(--text);
-      line-height: 1;
-    }
-    .stat-card .sc-sub {
-      font-size: 11.5px;
-      color: var(--muted);
-      margin-top: 4px;
-    }
-    .stat-card.green .sc-value { color: var(--green); }
-    .stat-card.red .sc-value   { color: var(--red); }
-
-    /* ── Chart grid ─────────────────────────────────────── */
-    .chart-grid {
-      display: grid;
-      grid-template-columns: 2fr 1fr;
-      gap: 14px;
-      margin-bottom: 28px;
-    }
-    @media (max-width: 900px) { .chart-grid { grid-template-columns: 1fr; } }
-    .chart-card {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 20px;
-      box-shadow: var(--shadow);
-    }
-    .chart-card h3 {
-      font-size: 13px;
-      font-weight: 600;
-      color: var(--text);
-      margin-bottom: 16px;
-    }
-    .chart-card canvas { max-height: 220px; }
-
-    /* ── Section block ──────────────────────────────────── */
-    .section {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      box-shadow: var(--shadow);
-      overflow: hidden;
-      margin-bottom: 28px;
-    }
-    .section-header {
-      padding: 14px 20px;
-      border-bottom: 1px solid var(--border);
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      flex-wrap: wrap;
-    }
-    .section-header h3 { font-size: 13px; font-weight: 600; }
-
-    /* ── Toolbar ─────────────────────────────────────────── */
-    .toolbar {
-      display: flex;
-      gap: 8px;
-      align-items: center;
-      flex-wrap: wrap;
-    }
-    .toolbar input, .toolbar select {
-      padding: 6px 10px;
-      border: 1px solid var(--border);
-      border-radius: 7px;
-      background: var(--surface);
-      color: var(--text);
-      font-size: 13px;
-      outline: none;
-    }
-    .toolbar input:focus, .toolbar select:focus { border-color: #9CA3AF; }
+    .tb input:focus,.tb select:focus{border-color:#6b7280;}
 
     /* ── Table ───────────────────────────────────────────── */
-    .table-wrap { overflow-x: auto; }
-    table { width: 100%; border-collapse: collapse; font-size: 13px; }
-    thead th {
-      padding: 10px 16px;
-      text-align: left;
-      font-size: 11px;
-      font-weight: 600;
-      letter-spacing: .06em;
-      text-transform: uppercase;
-      color: var(--muted);
-      border-bottom: 1px solid var(--border);
-      white-space: nowrap;
+    .tw{overflow-x:auto;}
+    table{width:100%;border-collapse:collapse;font-size:13px;}
+    thead th{
+      padding:10px 16px;text-align:left;font-size:10.5px;font-weight:600;
+      letter-spacing:.06em;text-transform:uppercase;color:var(--muted);
+      border-bottom:1px solid var(--border);white-space:nowrap;
     }
-    tbody tr { transition: background .1s; }
-    tbody tr:hover { background: var(--accent-lt); }
-    tbody td {
-      padding: 10px 16px;
-      border-bottom: 1px solid var(--border);
-      vertical-align: middle;
-    }
-    tbody tr:last-child td { border-bottom: none; }
+    tbody tr{transition:background .1s;}
+    tbody tr:hover{background:var(--lt);}
+    tbody td{padding:10px 16px;border-bottom:1px solid var(--border);vertical-align:middle;}
+    tbody tr:last-child td{border-bottom:none;}
 
-    .badge {
-      display: inline-block;
-      padding: 2px 9px;
-      border-radius: 20px;
-      font-size: 11px;
-      font-weight: 600;
-      letter-spacing: .03em;
-    }
-    .badge-neutral { background: #F3F4F6; color: #374151; }
-    .badge-blue    { background: #DBEAFE; color: #1D4ED8; }
-    .badge-green   { background: #DCFCE7; color: #15803D; }
-    .badge-amber   { background: #FEF9C3; color: #92400E; }
-    .badge-purple  { background: #EDE9FE; color: #6D28D9; }
+    .badge{display:inline-block;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:600;}
+    .bn{background:#2a2d3a;color:#8b8d98;}
+    .bb{background:#1e3a5f;color:#60a5fa;}
+    .bg{background:#14532d;color:#4ade80;}
+    .ba{background:#422006;color:#fbbf24;}
+    .bp{background:#2e1065;color:#a78bfa;}
+    .br{background:#450a0a;color:#f87171;}
 
-    .mono { font-family: 'SFMono-Regular', Consolas, monospace; font-size: 12px; color: var(--muted); }
-    .deck-code-cell { max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .mono{font-family:'SFMono-Regular',Consolas,monospace;font-size:12px;color:var(--muted);}
+    .cell-clip{max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 
-    /* ── Pagination ─────────────────────────────────────── */
-    .pagination {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 12px 16px;
-      border-top: 1px solid var(--border);
-      font-size: 13px;
-      color: var(--muted);
-    }
-    .pagination-btns { display: flex; gap: 6px; }
-    .page-btn {
-      padding: 4px 10px;
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      background: var(--surface);
-      cursor: pointer;
-      font-size: 13px;
-      color: var(--text);
-    }
-    .page-btn:hover:not(:disabled) { background: var(--accent-lt); }
-    .page-btn:disabled { opacity: .4; cursor: default; }
-    .page-btn.current { background: var(--accent); color: #fff; border-color: var(--accent); }
+    /* ── Pagination ──────────────────────────────────────── */
+    .pag{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-top:1px solid var(--border);font-size:13px;color:var(--muted);}
+    .pag-btns{display:flex;gap:5px;}
+    .pb{padding:4px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface);cursor:pointer;font-size:13px;color:var(--text);}
+    .pb:hover:not(:disabled){background:var(--lt);}
+    .pb:disabled{opacity:.4;cursor:default;}
+    .pb.cur{background:var(--accent);color:#fff;border-color:var(--accent);}
 
-    /* ── DB Schema ──────────────────────────────────────── */
-    .schema-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-      gap: 16px;
-    }
-    .schema-table {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      box-shadow: var(--shadow);
-      overflow: hidden;
-    }
-    .schema-table-header {
-      padding: 12px 16px;
-      background: var(--accent);
-      color: #fff;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-    }
-    .schema-table-header .tname { font-size: 13px; font-weight: 700; letter-spacing: -.1px; }
-    .schema-table-header .trows { font-size: 11px; opacity: .75; }
-    .schema-col {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 7px 16px;
-      border-bottom: 1px solid var(--border);
-      gap: 8px;
-    }
-    .schema-col:last-child { border-bottom: none; }
-    .schema-col .col-name {
-      font-size: 13px;
-      font-family: 'SFMono-Regular', Consolas, monospace;
-      font-weight: 500;
-    }
-    .schema-col .col-pk { color: #D97706; font-weight: 700; margin-right: 4px; }
-    .schema-col .col-type {
-      font-size: 11px;
-      color: var(--muted);
-      background: var(--accent-lt);
-      padding: 2px 7px;
-      border-radius: 4px;
-      font-family: 'SFMono-Regular', Consolas, monospace;
-      white-space: nowrap;
-    }
-    .schema-col .col-nn { font-size: 10px; color: var(--red); margin-left: 4px; }
+    /* ── DB Schema ───────────────────────────────────────── */
+    .erd-box{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:24px;margin-bottom:28px;box-shadow:var(--sh);overflow-x:auto;}
+    .erd-box h3{font-size:13px;font-weight:600;margin-bottom:20px;}
+    .erd{display:flex;gap:24px;align-items:flex-start;flex-wrap:wrap;}
+    .en{border:1px solid var(--border);border-radius:8px;overflow:hidden;min-width:170px;}
+    .en-hd{background:#1F2937;color:#fff;padding:9px 14px;font-size:12px;font-weight:700;display:flex;justify-content:space-between;align-items:center;}
+    .en-hd .ec{font-size:10px;opacity:.65;white-space:nowrap;}
+    .ec-row{display:flex;align-items:center;justify-content:space-between;padding:6px 14px;border-bottom:1px solid var(--border);gap:8px;}
+    .ec-row:last-child{border-bottom:none;}
+    .ecn{font-size:12px;font-family:monospace;font-weight:500;}
+    .epk{color:#D97706;font-size:10px;margin-right:3px;}
+    .efk{color:var(--blue);font-size:10px;margin-right:3px;}
+    .ect{font-size:11px;color:var(--muted);background:var(--lt);padding:2px 6px;border-radius:4px;font-family:monospace;white-space:nowrap;}
+    .enn{font-size:10px;color:var(--red);margin-left:3px;}
+    .arr{color:var(--muted);align-self:center;font-size:13px;padding-top:28px;white-space:nowrap;}
 
-    /* ── Relations diagram ──────────────────────────────── */
-    .erd-wrap {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 24px;
-      margin-bottom: 28px;
-      box-shadow: var(--shadow);
-      overflow-x: auto;
-    }
-    .erd-wrap h3 { font-size: 13px; font-weight: 600; margin-bottom: 20px; }
-    .erd { display: flex; gap: 36px; align-items: flex-start; flex-wrap: wrap; }
-    .erd-node {
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      overflow: hidden;
-      min-width: 160px;
-    }
-    .erd-node-head {
-      background: #1F2937;
-      color: #fff;
-      padding: 8px 14px;
-      font-size: 12px;
-      font-weight: 700;
-    }
-    .erd-node-col {
-      padding: 5px 14px;
-      font-size: 12px;
-      font-family: monospace;
-      border-bottom: 1px solid var(--border);
-      display: flex;
-      gap: 6px;
-      align-items: center;
-    }
-    .erd-node-col:last-child { border-bottom: none; }
-    .erd-node-col .epk { color: #D97706; font-size: 10px; }
-    .erd-node-col .efk { color: var(--blue); font-size: 10px; }
-    .erd-conn {
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      color: var(--muted);
-      font-size: 22px;
-      line-height: 1;
-      align-self: center;
-    }
-    .erd-conn-label { font-size: 10px; color: var(--muted); text-align: center; letter-spacing: .05em; }
+    .schema-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px;}
+    .st{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);box-shadow:var(--sh);overflow:hidden;}
 
-    /* ── Top voted table ────────────────────────────────── */
-    .vote-bar {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      font-size: 12px;
-    }
-    .vote-like   { color: var(--green); font-weight: 600; }
-    .vote-dislike{ color: var(--red);   font-weight: 600; }
+    /* ── Vote bar ────────────────────────────────────────── */
+    .vbar{display:flex;align-items:center;gap:6px;font-size:12px;}
+    .vg{color:var(--green);font-weight:600;}
+    .vr{color:var(--red);font-weight:600;}
 
-    /* ── Streamer decks ─────────────────────────────────── */
-    .status-approved { display:inline-flex; align-items:center; gap:5px; color:var(--green); font-weight:600; font-size:12px; }
-    .status-pending  { display:inline-flex; align-items:center; gap:5px; color:#D97706;      font-weight:600; font-size:12px; }
-    .status-rejected { display:inline-flex; align-items:center; gap:5px; color:var(--red);   font-weight:600; font-size:12px; }
-    .reason-pill {
-      display: inline-block;
-      background: #FEF2F2;
-      color: #991B1B;
-      border: 1px solid #FECACA;
-      border-radius: 5px;
-      padding: 2px 8px;
-      font-size: 11px;
-      max-width: 260px;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-    .sd-stats { font-size:12px; color:var(--muted); white-space:nowrap; }
-    .sd-name  { font-weight:600; font-size:13px; }
-    .sd-streamer { font-size:12px; color:var(--muted); }
-    .sd-summary {
-      display: flex; gap: 18px; flex-wrap: wrap;
-      padding: 12px 20px;
-      border-bottom: 1px solid var(--border);
-      font-size: 13px;
-    }
-    .sd-summary .s-item { display:flex; align-items:center; gap:6px; }
-    .sd-summary .s-dot  { width:9px; height:9px; border-radius:50%; flex-shrink:0; }
-    .sd-summary .s-dot.green  { background:var(--green); }
-    .sd-summary .s-dot.amber  { background:#F59E0B; }
-    .sd-summary .s-dot.red    { background:var(--red); }
-    .filter-tabs { display:flex; gap:4px; }
-    .filter-tab {
-      padding: 5px 12px;
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      font-size: 12px;
-      cursor: pointer;
-      background: var(--surface);
-      color: var(--muted);
-      transition: all .12s;
-    }
-    .filter-tab:hover { background: var(--accent-lt); color: var(--text); }
-    .filter-tab.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+    /* ── Misc ────────────────────────────────────────────── */
+    .empty{padding:36px;text-align:center;color:var(--muted);font-size:13px;}
+    .sp{display:inline-block;width:16px;height:16px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .6s linear infinite;vertical-align:middle;margin-right:5px;}
+    @keyframes spin{to{transform:rotate(360deg);}}
+    #toast{position:fixed;bottom:22px;right:22px;background:var(--text);color:#fff;padding:10px 16px;border-radius:8px;font-size:13px;box-shadow:0 4px 12px rgba(0,0,0,.18);opacity:0;transform:translateY(6px);transition:opacity .2s,transform .2s;pointer-events:none;z-index:999;}
+    #toast.show{opacity:1;transform:translateY(0);}
+    /* ── Activity bar ────────────────────────────────────── */
+    .act{display:flex;align-items:center;gap:7px;}
+    .act-bar{width:80px;height:6px;background:var(--border);border-radius:3px;overflow:hidden;flex-shrink:0;}
+    .act-fill{height:100%;border-radius:3px;transition:width .3s;}
+    .act-none .act-fill{background:#3a3d4a;width:4px;}
+    .act-low  .act-fill{background:#6b7280;}
+    .act-mid  .act-fill{background:#8b8d98;}
+    .act-high .act-fill{background:#a1a3ae;}
+    .act-top  .act-fill{background:#e4e4e7;}
+    .act-label{font-size:11px;white-space:nowrap;}
+    .act-none .act-label{color:#6b7280;}
+    .act-low  .act-label{color:#8b8d98;}
+    .act-mid  .act-label{color:#a1a3ae;}
+    .act-high .act-label{color:#c4c5cc;font-weight:600;}
+    .act-top  .act-label{color:#e4e4e7;font-weight:700;}
 
-    /* ── Empty state ─────────────────────────────────────── */
-    .empty {
-      padding: 40px;
-      text-align: center;
-      color: var(--muted);
-      font-size: 13px;
-    }
+    /* ── User row ────────────────────────────────────────── */
+    .user-row{cursor:pointer;}
+    .user-row:hover td{background:var(--lt)!important;}
 
-    /* ── Loading spinner ─────────────────────────────────── */
-    .spinner {
-      display: inline-block;
-      width: 18px; height: 18px;
-      border: 2px solid var(--border);
-      border-top-color: var(--accent);
-      border-radius: 50%;
-      animation: spin .6s linear infinite;
-      vertical-align: middle;
-      margin-right: 6px;
+    /* ── Modal ───────────────────────────────────────────── */
+    .modal-bg{
+      display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);
+      z-index:100;align-items:center;justify-content:center;padding:20px;
     }
-    @keyframes spin { to { transform: rotate(360deg); } }
+    .modal-bg.open{display:flex;}
+    .modal{
+      background:var(--surface);border-radius:14px;width:100%;max-width:780px;
+      max-height:88vh;display:flex;flex-direction:column;overflow:hidden;
+      box-shadow:0 20px 60px rgba(0,0,0,.2);
+    }
+    .modal-head{
+      padding:20px 24px 16px;border-bottom:1px solid var(--border);
+      display:flex;align-items:flex-start;justify-content:space-between;gap:12px;
+    }
+    .modal-head h2{font-size:16px;font-weight:700;}
+    .modal-head .meta{font-size:12px;color:var(--muted);margin-top:3px;}
+    .modal-close{
+      width:32px;height:32px;border-radius:8px;border:1px solid var(--border);
+      background:none;cursor:pointer;font-size:18px;color:var(--muted);
+      display:flex;align-items:center;justify-content:center;flex-shrink:0;
+    }
+    .modal-close:hover{background:var(--lt);}
+    .modal-stats{
+      display:flex;gap:0;border-bottom:1px solid var(--border);
+    }
+    .modal-stat{
+      flex:1;padding:14px 20px;text-align:center;border-right:1px solid var(--border);
+    }
+    .modal-stat:last-child{border-right:none;}
+    .modal-stat .ms-val{font-size:22px;font-weight:700;}
+    .modal-stat .ms-lbl{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-top:2px;}
+    .modal-body{overflow-y:auto;flex:1;}
+    .modal-body table{font-size:12.5px;}
+    .modal-body thead th{font-size:10px;}
 
-    /* ── Toast ───────────────────────────────────────────── */
-    #toast {
-      position: fixed;
-      bottom: 24px; right: 24px;
-      background: var(--text);
-      color: #fff;
-      padding: 10px 18px;
-      border-radius: 8px;
-      font-size: 13px;
-      box-shadow: 0 4px 12px rgba(0,0,0,.18);
-      opacity: 0;
-      transform: translateY(8px);
-      transition: opacity .2s, transform .2s;
-      pointer-events: none;
-      z-index: 999;
+    /* ── Alerts ──────────────────────────────────────────── */
+    .alert-list{display:flex;flex-direction:column;gap:10px;margin-bottom:28px;}
+    .alert{
+      display:flex;gap:14px;align-items:flex-start;
+      padding:14px 18px;border-radius:var(--r);border:1px solid var(--border);
+      background:var(--surface);box-shadow:var(--sh);
     }
-    #toast.show { opacity: 1; transform: translateY(0); }
-
-    @media (max-width: 680px) {
-      .sidebar { display: none; }
-      .content { padding: 16px; }
-      .stat-grid { grid-template-columns: repeat(2, 1fr); }
+    .alert-ok     {border-left:4px solid var(--green);}
+    .alert-warning{border-left:4px solid var(--amber);}
+    .alert-critical{border-left:4px solid var(--red);}
+    .alert-icon{font-size:18px;flex-shrink:0;margin-top:1px;}
+    .alert-ok      .alert-icon{color:var(--green);}
+    .alert-warning .alert-icon{color:var(--amber);}
+    .alert-critical .alert-icon{color:var(--red);}
+    .alert-title{font-size:13px;font-weight:700;margin-bottom:3px;}
+    .alert-detail{font-size:12px;color:var(--muted);line-height:1.5;}
+    /* ── Deck log modal ──────────────────────────────────── */
+    .log-modal{background:var(--surface);border-radius:14px;width:100%;max-width:860px;
+      max-height:90vh;display:flex;flex-direction:column;overflow:hidden;
+      box-shadow:0 20px 60px rgba(0,0,0,.22);}
+    .log-modal .modal-head{padding:16px 20px 14px;}
+    .log-console{
+      background:#0F172A;flex:1;overflow-y:auto;padding:0;
+      font-family:'SFMono-Regular',Consolas,monospace;font-size:12.5px;line-height:1.7;
     }
+    .log-section{padding:10px 18px 2px;border-bottom:1px solid rgba(255,255,255,.06);}
+    .log-section:last-child{border-bottom:none;}
+    .log-sec-hd{font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;
+      color:#475569;margin-bottom:6px;padding-bottom:4px;border-bottom:1px solid #1E293B;}
+    .log-line{display:flex;gap:10px;padding:1px 0;}
+    .log-ts{color:#334155;white-space:nowrap;flex-shrink:0;}
+    .log-tag{white-space:nowrap;flex-shrink:0;}
+    .tag-ok   {color:#22C55E;}
+    .tag-err  {color:#EF4444;}
+    .tag-info {color:#60A5FA;}
+    .tag-warn {color:#F59E0B;}
+    .tag-dim  {color:#64748B;}
+    .log-msg  {color:#CBD5E1;word-break:break-all;}
+    .log-val  {color:#94A3B8;}
+    .log-key  {color:#60A5FA;}
+    .log-num  {color:#A78BFA;}
+    .log-str  {color:#86EFAC;}
+    .log-cards{display:flex;flex-wrap:wrap;gap:5px;padding:4px 0 8px;}
+    .log-card-id{
+      background:#1E293B;color:#94A3B8;padding:3px 8px;
+      border-radius:5px;font-size:11px;border:1px solid #334155;
+    }
+    /* ── Flood mini-chart ────────────────────────────────── */
+    .flood-grid{display:flex;gap:3px;align-items:flex-end;height:48px;padding:4px 0;}
+    .flood-bar{flex:1;min-width:6px;background:var(--border);border-radius:2px;position:relative;cursor:default;}
+    .flood-bar .fl-ok {position:absolute;bottom:0;width:100%;background:#6b7280;border-radius:2px;}
+    .flood-bar .fl-err{position:absolute;width:100%;background:var(--red);border-radius:2px 2px 0 0;}
+    /* ── Copy btn ────────────────────────────────────────── */
+    .copy-btn{
+      display:inline-flex;align-items:center;justify-content:center;
+      width:22px;height:22px;border-radius:5px;border:1px solid var(--border);
+      background:none;cursor:pointer;color:var(--muted);font-size:12px;
+      vertical-align:middle;margin-left:4px;transition:background .12s,color .12s;
+      flex-shrink:0;
+    }
+    .copy-btn:hover{background:var(--lt);color:var(--text);}
+    .copy-btn.ok{border-color:var(--green);color:var(--green);}
+    .deck-code-cell{display:flex;align-items:center;gap:2px;}
+    /* ── HSGuru table ────────────────────────────────────── */
+    .wr-bar{width:60px;height:5px;background:var(--border);border-radius:3px;overflow:hidden;display:inline-block;vertical-align:middle;margin-left:4px;}
+    .wr-fill{height:100%;border-radius:3px;background:#22c55e;}
+    .pop-badge{display:inline-block;min-width:44px;padding:2px 7px;border-radius:20px;font-size:11px;font-weight:600;text-align:center;background:#2a2d3a;color:#8b8d98;}
+    @media(max-width:700px){.sb{display:none;}.content{padding:14px;}.cg-2,.cg-3{grid-template-columns:1fr;}.sg{grid-template-columns:repeat(2,1fr);}.modal{max-height:95vh;}}
+    /* ── Scrollbar (dark) ──────────────────────────────────── */
+    ::-webkit-scrollbar{width:8px;height:8px;}
+    ::-webkit-scrollbar-track{background:#0f1117;}
+    ::-webkit-scrollbar-thumb{background:#2a2d3a;border-radius:4px;}
+    ::-webkit-scrollbar-thumb:hover{background:#3a3d4a;}
   </style>
+  <link rel="stylesheet" href="{{ url_for('static', filename='admin-redesign.css') }}"/>
+  <link rel="stylesheet" href="{{ url_for('static', filename='admin-experience.css') }}?v=20260612-adminfx2"/>
 </head>
-<body>
+<body class="admin-experience" data-admin-theme="midnight">
 <div class="shell">
 
-  <!-- ─── Sidebar ─────────────────────────────────── -->
-  <aside class="sidebar">
-    <div class="sidebar-logo">
-      <div class="logo-name">DeckView</div>
-      <div class="logo-sub">Панель администратора</div>
+<!-- ─── Sidebar ──────────────────────────────────── -->
+<aside class="sb">
+  <div class="sb-logo">
+    <div class="name">DeckView</div>
+    <div class="sub">Панель администратора</div>
+  </div>
+  <nav class="sb-nav">
+    <div class="nl">Основное</div>
+    <div class="ni active" onclick="go('overview',this)"><span class="ic">◈</span>Обзор</div>
+    <div class="ni" onclick="go('archetypes',this)"><span class="ic">🔤</span>Архетипы</div>
+    <div class="ni"        onclick="go('decks',this)">   <span class="ic">▤</span>История колод</div>
+    <div class="ni"        onclick="go('users',this)">   <span class="ic">◉</span>Пользователи</div>
+    <div class="ni"        onclick="go('events',this)">  <span class="ic">◎</span>События</div>
+    <div class="nl">Аналитика</div>
+    <div class="ni"        onclick="go('load',this)">    <span class="ic">◑</span>Нагрузка</div>
+    <div class="ni"        onclick="go('errors',this)">  <span class="ic">⚠</span>Ошибки</div>
+    <div class="ni"        onclick="go('hsguru',this)">  <span class="ic">⚔</span>HSGuru Мета</div>
+    <div class="nl">Публикации</div>
+    <div class="ni"        onclick="go('publogs',this)"> <span class="ic">📤</span>Лог публикаций</div>
+    <div class="nl">Hearthstone</div>
+    <div class="ni"        onclick="go('arena',this)">   <span class="ic">🏟</span>Арена</div>
+    <div class="ni"        onclick="go('comps',this)">   <span class="ic">⚔</span>Поля сражений</div>
+    <div class="nl">База данных</div>
+    <div class="ni"        onclick="go('schema',this)">  <span class="ic">⬡</span>Схема БД</div>
+  </nav>
+  <div class="sb-foot">DeckView Bot · blizzcore.ru</div>
+</aside>
+
+<!-- ─── Main ──────────────────────────────────────── -->
+<div class="main">
+  <div class="topbar">
+    <span class="topbar-title" id="tt">Обзор</span>
+    <div class="admin-top-actions">
+      <div class="admin-theme-switch" aria-label="Тема админ-панели">
+        <button type="button" data-admin-theme-choice="light">Светлая</button>
+        <button type="button" data-admin-theme-choice="midnight">Темная</button>
+        <button type="button" data-admin-theme-choice="hearth">Hearth</button>
+      </div>
+      <span id="ts" style="color:var(--muted);font-size:12px;"></span>
+      <button class="btn" onclick="refresh()">↺ Обновить</button>
     </div>
-    <nav class="sidebar-nav">
-      <div class="nav-label">Навигация</div>
-      <div class="nav-item active" data-page="overview" onclick="showPage('overview', this)">
-        <span class="icon">◈</span> Обзор
-      </div>
-      <div class="nav-item" data-page="decks" onclick="showPage('decks', this)">
-        <span class="icon">▤</span> История колод
-      </div>
-      <div class="nav-item" data-page="votes" onclick="showPage('votes', this)">
-        <span class="icon">◆</span> Голоса
-      </div>
-      <div class="nav-label">HSGuru</div>
-      <div class="nav-item" data-page="streamer-decks" onclick="showPage('streamer-decks', this)">
-        <span class="icon">🎮</span> Колоды стримеров
-      </div>
-      <div class="nav-label">База данных</div>
-      <div class="nav-item" data-page="schema" onclick="showPage('schema', this)">
-        <span class="icon">⬡</span> Схема БД
-      </div>
-    </nav>
-    <div class="sidebar-footer">DeckView Bot Admin · 2025</div>
-  </aside>
+  </div>
 
-  <!-- ─── Main ─────────────────────────────────────── -->
-  <div class="main">
-    <div class="topbar">
-      <div style="display:flex;align-items:center;gap:10px;">
-        <button class="menu-toggle" onclick="toggleSidebar()" aria-label="Меню">☰</button>
-        <span class="topbar-title" id="topbar-title">Обзор</span>
+  <div class="content">
+
+    <!-- ══════ OVERVIEW ══════ -->
+    <div id="p-overview" class="page active">
+      <section class="admin-hero" aria-label="Сводка админ-панели">
+        <div class="admin-hero-copy">
+          <div class="admin-eyebrow">DeckView Admin</div>
+          <h1>Панель управления ботом и колодами</h1>
+          <p>Сводка по генерациям, пользователям, публикациям и качеству работы сервиса в одном аккуратном интерфейсе.</p>
+          <div class="admin-hero-actions">
+            <button class="btn btn-primary" type="button" onclick="refresh()">Обновить сводку</button>
+            <button class="btn" type="button" onclick="go('archetypes', document.querySelector('.ni[onclick*=archetypes]'))">Архетипы</button>
+          </div>
+        </div>
+        <div class="admin-hero-visual" aria-hidden="true">
+          <div class="admin-stack">
+            <span></span><span></span><span></span><span></span>
+          </div>
+          <div class="admin-signal-grid">
+            <i></i><i></i><i></i><i></i><i></i><i></i>
+          </div>
+          <div class="admin-live-pill">Live metrics</div>
+        </div>
+      </section>
+
+      <div class="sg" id="sg"></div>
+
+      <div class="cg cg-2">
+        <div class="cc"><h3>Активность — колоды по дням (30 дней)</h3><canvas id="ch-daily"></canvas></div>
+        <div class="cc"><h3>Режимы игры</h3><canvas id="ch-modes"></canvas></div>
       </div>
-      <div class="topbar-actions">
-        <span id="topbar-status" style="color:var(--muted);font-size:12px;"></span>
-        <button class="icon-btn" id="autorefresh-btn" onclick="toggleAutoRefresh()" title="Авто-обновление каждые 30 сек">⟳</button>
-        <button class="icon-btn" id="theme-btn" onclick="toggleTheme()" title="Сменить тему">🌙</button>
-        <button class="btn" onclick="refreshCurrent()">↺ Обновить</button>
+      <div class="cg cg-3">
+        <div class="cc" style="grid-column:1/3"><h3>Классы героев</h3><canvas id="ch-classes" style="max-height:180px;"></canvas></div>
+        <div class="cc"><h3>Стоимость пыли</h3><canvas id="ch-costs" style="max-height:180px;"></canvas></div>
       </div>
     </div>
-    <div class="scrim" id="scrim" onclick="toggleSidebar(false)"></div>
 
-    <div class="content">
-
-      <!-- ═══ PAGE: Overview ═════════════════════════ -->
-      <div id="page-overview" class="page active">
-
-        <div class="stat-grid" id="stat-grid">
-          <div class="stat-card">
-            <div class="sc-label">Всего колод</div>
-            <div class="sc-value" id="s-total">—</div>
-            <div class="sc-sub">в базе данных</div>
-          </div>
-          <div class="stat-card">
-            <div class="sc-label">Сегодня</div>
-            <div class="sc-value" id="s-today">—</div>
-            <div class="sc-sub">новых колод</div>
-          </div>
-          <div class="stat-card">
-            <div class="sc-label">За 7 дней</div>
-            <div class="sc-value" id="s-week">—</div>
-            <div class="sc-sub">новых колод</div>
-          </div>
-          <div class="stat-card green">
-            <div class="sc-label">Лайки</div>
-            <div class="sc-value" id="s-likes">—</div>
-            <div class="sc-sub">всего голосов ▲</div>
-          </div>
-          <div class="stat-card red">
-            <div class="sc-label">Дизлайки</div>
-            <div class="sc-value" id="s-dislikes">—</div>
-            <div class="sc-sub">всего голосов ▼</div>
+    <!-- ══════ DECKS ══════ -->
+    <div id="p-decks" class="page">
+      <div class="sec">
+        <div class="sec-hd">
+          <h3>История колод</h3>
+          <div class="tb">
+            <input id="d-search" type="text" placeholder="Поиск по коду / названию…" style="width:210px;"/>
+            <select id="d-class"><option value="">Все классы</option>
+              <option>Воин</option><option>Охотник</option><option>Маг</option>
+              <option>Паладин</option><option>Жрец</option><option>Чернокнижник</option>
+              <option>Разбойник</option><option>Шаман</option><option>Друид</option>
+              <option>Охотник на демонов</option><option>Рыцарь Смерти</option>
+            </select>
+            <select id="d-mode"><option value="">Все режимы</option>
+              <option>Стандарт</option><option>Вольный</option>
+              <option>Классический</option><option>Потасовка</option>
+            </select>
+            <select id="d-sort">
+              <option value="created_at|desc">Дата ↓</option>
+              <option value="created_at|asc">Дата ↑</option>
+              <option value="cost|desc">Стоимость ↓</option>
+              <option value="cost|asc">Стоимость ↑</option>
+            </select>
+            <button class="btn" onclick="loadDecks(1)">Найти</button>
           </div>
         </div>
+        <div class="tw">
+          <table>
+            <thead><tr><th>#</th><th>Код колоды</th><th>Название</th><th>Класс</th><th>Режим</th><th>Стоимость</th><th>Источник</th><th>Изображение</th><th>Дата</th></tr></thead>
+            <tbody id="dtb"></tbody>
+          </table>
+        </div>
+        <div class="pag" id="dpag" style="display:none;">
+          <span id="dpi"></span>
+          <div class="pag-btns" id="dpb"></div>
+        </div>
+      </div>
+    </div>
 
-        <div class="chart-grid">
-          <div class="chart-card">
-            <h3>Активность — колоды по дням (30 дней)</h3>
-            <canvas id="chart-daily"></canvas>
-          </div>
-          <div class="chart-card">
-            <h3>Режимы игры</h3>
-            <canvas id="chart-modes"></canvas>
+    <!-- ══════ USERS ══════ -->
+    <div id="p-users" class="page">
+      <div class="sec">
+        <div class="sec-hd">
+          <h3>Пользователи бота</h3>
+          <div class="tb">
+            <input id="u-search" type="text" placeholder="ID, имя или @username…" style="width:220px;"/>
+            <button class="btn" onclick="loadUsers(1)">Найти</button>
           </div>
         </div>
-
-        <div class="chart-grid" style="grid-template-columns:1fr;">
-          <div class="chart-card">
-            <h3>Распределение по стоимости (пыль)</h3>
-            <canvas id="chart-costs" style="max-height:160px;"></canvas>
-          </div>
+        <div class="tw">
+          <table>
+            <thead><tr><th>User ID</th><th>Username</th><th>Имя</th><th>Колоды</th><th>Активность</th><th>Первый вход</th><th>Последний вход</th></tr></thead>
+            <tbody id="utb"></tbody>
+          </table>
         </div>
+        <div class="pag" id="upag" style="display:none;">
+          <span id="upi"></span>
+          <div class="pag-btns" id="upb"></div>
+        </div>
+      </div>
+    </div>
 
-      </div><!-- /overview -->
-
-      <!-- ═══ PAGE: Decks ════════════════════════════ -->
-      <div id="page-decks" class="page">
-        <div class="section">
-          <div class="section-header">
-            <h3>История колод</h3>
-            <div class="toolbar">
-              <input id="deck-search" type="text" placeholder="Поиск по коду..." style="width:200px;" />
-              <select id="deck-mode-filter">
-                <option value="">Все режимы</option>
-                <option value="Стандарт">Стандарт</option>
-                <option value="Вольный">Вольный</option>
-                <option value="Классический">Классический</option>
-                <option value="Потасовка">Потасовка</option>
-              </select>
-              <select id="deck-sort">
-                <option value="created_at|desc">Дата ↓</option>
-                <option value="created_at|asc">Дата ↑</option>
-                <option value="dust_cost|desc">Стоимость ↓</option>
-                <option value="dust_cost|asc">Стоимость ↑</option>
-              </select>
-              <button class="btn btn-primary" onclick="loadDecks(1)">Найти</button>
-              <button class="btn" onclick="exportDecksCSV()" title="Скачать все колоды в CSV">⤓ CSV</button>
-            </div>
+    <!-- ══════ USER MODAL ══════ -->
+    <div class="modal-bg" id="user-modal" onclick="closeModal(event)">
+      <div class="modal">
+        <div class="modal-head">
+          <div>
+            <h2 id="m-title">Пользователь</h2>
+            <div class="meta" id="m-meta"></div>
           </div>
-          <div class="table-wrap">
+          <button class="modal-close" onclick="closeModalDirect()">✕</button>
+        </div>
+        <div class="modal-stats" id="m-stats"></div>
+        <div class="modal-body">
+          <div class="tw">
             <table>
-              <thead>
-                <tr>
-                  <th>#</th>
-                  <th>Код колоды</th>
-                  <th>Режим</th>
-                  <th>Стоимость (пыль)</th>
-                  <th>Добавлена</th>
-                </tr>
-              </thead>
-              <tbody id="deck-tbody">
-                <tr><td colspan="5" class="empty"><span class="spinner"></span>Загрузка...</td></tr>
-              </tbody>
-            </table>
-          </div>
-          <div class="pagination" id="deck-pagination" style="display:none;">
-            <span id="deck-page-info"></span>
-            <div class="pagination-btns" id="deck-page-btns"></div>
-          </div>
-        </div>
-      </div><!-- /decks -->
-
-      <!-- ═══ PAGE: Votes ════════════════════════════ -->
-      <div id="page-votes" class="page">
-        <div class="section">
-          <div class="section-header">
-            <h3>Топ по голосам</h3>
-            <span style="font-size:12px;color:var(--muted);">Рейтинг по количеству лайков</span>
-          </div>
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Место</th>
-                  <th>Message ID</th>
-                  <th>Лайки</th>
-                  <th>Дизлайки</th>
-                  <th>Рейтинг</th>
-                </tr>
-              </thead>
-              <tbody id="votes-tbody">
-                <tr><td colspan="5" class="empty"><span class="spinner"></span>Загрузка...</td></tr>
-              </tbody>
+              <thead><tr><th>#</th><th>Код колоды</th><th>Класс</th><th>Режим</th><th>Стоимость</th><th>Дата</th></tr></thead>
+              <tbody id="m-tbody"></tbody>
             </table>
           </div>
         </div>
-      </div><!-- /votes -->
+      </div>
+    </div>
 
-      <!-- ═══ PAGE: Streamer Decks ══════════════════ -->
-      <div id="page-streamer-decks" class="page">
-        <div class="section">
-          <div class="section-header">
-            <h3>Колоды стримеров (HSGuru)</h3>
-            <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
-              <div class="filter-tabs" id="sd-filter-tabs">
-                <button class="filter-tab active" data-filter="all"      onclick="sdSetFilter('all',this)">Все</button>
-                <button class="filter-tab"         data-filter="approved" onclick="sdSetFilter('approved',this)">✅ Опубликовано</button>
-                <button class="filter-tab"         data-filter="pending"  onclick="sdSetFilter('pending',this)">⏳ Ожидает</button>
-                <button class="filter-tab"         data-filter="rejected" onclick="sdSetFilter('rejected',this)">❌ Отклонено</button>
-              </div>
-              <input id="sd-search" type="text" placeholder="Поиск по названию / стримеру…"
-                     style="width:220px;padding:6px 10px;border:1px solid var(--border);border-radius:7px;font-size:13px;"
-                     oninput="sdRender()" />
+    <!-- ══════ DECK LOG MODAL ══════ -->
+    <div class="modal-bg" id="deck-modal" onclick="closeDeckModal(event)">
+      <div class="log-modal">
+        <div class="modal-head" style="background:#0F172A;border-bottom:1px solid #1E293B;">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+            <div>
+              <h2 id="dm-title" style="font-size:14px;color:#E2E8F0;font-family:monospace;">deck.log</h2>
+              <div id="dm-meta" style="font-size:11px;color:#475569;margin-top:2px;font-family:monospace;"></div>
             </div>
-          </div>
-          <div class="sd-summary" id="sd-summary"></div>
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>#</th>
-                  <th>Колода / Стример</th>
-                  <th>Формат</th>
-                  <th>Игр / Стат</th>
-                  <th>Статус</th>
-                  <th>Причина / Дата</th>
-                </tr>
-              </thead>
-              <tbody id="sd-tbody">
-                <tr><td colspan="6" class="empty"><span class="spinner"></span>Загрузка данных с HSGuru…</td></tr>
-              </tbody>
-            </table>
+            <button class="modal-close" style="background:#1E293B;border-color:#334155;color:#94A3B8;" onclick="closeDeckModalDirect()">✕</button>
           </div>
         </div>
-      </div><!-- /streamer-decks -->
+        <div class="log-console" id="dm-console">
+          <div class="log-section"><div class="log-line"><span class="tag-info">›</span><span class="log-msg">Загрузка…</span></div></div>
+        </div>
+      </div>
+    </div>
 
-      <!-- ═══ PAGE: Schema ═══════════════════════════ -->
-      <div id="page-schema" class="page">
-
-        <div class="erd-wrap">
-          <h3>Диаграмма связей (ERD)</h3>
-          <div class="erd">
-
-            <div class="erd-node">
-              <div class="erd-node-head">decks</div>
-              <div class="erd-node-col"><span class="epk">PK</span> id INTEGER</div>
-              <div class="erd-node-col">deck_code TEXT</div>
-              <div class="erd-node-col">created_at TIMESTAMP</div>
-              <div class="erd-node-col">mode TEXT</div>
-              <div class="erd-node-col">dust_cost INTEGER</div>
-            </div>
-
-            <div class="erd-conn">
-              <div style="font-size:13px;letter-spacing:.04em;color:var(--muted);">1 ──── ∞</div>
-              <div class="erd-conn-label">deck_id</div>
-            </div>
-
-            <div class="erd-node">
-              <div class="erd-node-head">deck_cards</div>
-              <div class="erd-node-col"><span class="efk">FK</span> deck_id INTEGER</div>
-              <div class="erd-node-col">card_dbf_id INTEGER</div>
-            </div>
-
-            <div style="width:60px;align-self:center;text-align:center;color:var(--muted);font-size:12px;">нет прямой связи</div>
-
-            <div class="erd-node">
-              <div class="erd-node-head">deck_votes</div>
-              <div class="erd-node-col"><span class="epk">PK</span> message_id INTEGER</div>
-              <div class="erd-node-col">like_count INTEGER</div>
-              <div class="erd-node-col">dislike_count INTEGER</div>
-            </div>
-
-            <div class="erd-conn">
-              <div style="font-size:13px;letter-spacing:.04em;color:var(--muted);">1 ──── ∞</div>
-              <div class="erd-conn-label">message_id</div>
-            </div>
-
-            <div class="erd-node">
-              <div class="erd-node-head">deck_user_votes</div>
-              <div class="erd-node-col"><span class="efk">FK</span> message_id INTEGER</div>
-              <div class="erd-node-col">user_id INTEGER</div>
-              <div class="erd-node-col">vote TEXT</div>
-            </div>
-
+    <!-- ══════ EVENTS ══════ -->
+    <div id="p-events" class="page">
+      <div class="sec">
+        <div class="sec-hd">
+          <h3>Лог событий бота</h3>
+          <div class="tb">
+            <select id="ev-type">
+              <option value="">Все</option>
+              <option value="deck_code">Колоды</option>
+              <option value="card">Карты</option>
+              <option value="findwith">Findwith</option>
+              <option value="publish">Публикации</option>
+              <option value="error">Ошибки</option>
+            </select>
+            <button class="btn" onclick="loadEvents(0)">Обновить</button>
+            <span id="ev-count" style="color:var(--muted);font-size:12px;"></span>
           </div>
         </div>
+        <div class="tw">
+          <table>
+            <thead><tr><th>Время</th><th>Тип</th><th>Чат</th><th>Данные</th></tr></thead>
+            <tbody id="evtb"></tbody>
+          </table>
+        </div>
+        <div class="pag" id="evpag" style="display:none;">
+          <span id="evpi"></span>
+          <div class="pag-btns" id="evpb"></div>
+        </div>
+      </div>
+    </div>
 
-        <div class="schema-grid" id="schema-grid">
-          <div style="color:var(--muted);font-size:13px;padding:12px;">
-            <span class="spinner"></span>Загрузка схемы...
+    <!-- ══════ LOAD ══════ -->
+    <div id="p-load" class="page">
+
+      <!-- Alerts -->
+      <div class="alert-list" id="load-alerts">
+        <div class="empty"><span class="sp"></span>Загрузка…</div>
+      </div>
+
+      <!-- Summary cards -->
+      <div class="sg" id="load-sg"></div>
+
+      <!-- Charts row -->
+      <div class="cg cg-2" style="margin-bottom:28px;">
+        <div class="cc">
+          <h3>Активность по часам — последние 24 ч</h3>
+          <canvas id="ch-hourly" style="max-height:200px;"></canvas>
+        </div>
+        <div class="cc">
+          <h3>5-минутные окна — последние 2 ч</h3>
+          <div id="flood-chart" style="padding:8px 4px;">
+            <div class="empty" style="padding:12px;">Загрузка…</div>
+          </div>
+          <div style="display:flex;gap:14px;font-size:11px;color:var(--muted);margin-top:4px;padding:0 4px;">
+            <span><span style="display:inline-block;width:10px;height:10px;background:#6b7280;border-radius:2px;margin-right:4px;"></span>Успешно</span>
+            <span><span style="display:inline-block;width:10px;height:10px;background:var(--red);border-radius:2px;margin-right:4px;"></span>Ошибки</span>
           </div>
         </div>
+      </div>
 
-      </div><!-- /schema -->
+      <!-- Top errors table -->
+      <div class="sec">
+        <div class="sec-hd">
+          <h3>Топ ошибок за всё время</h3>
+          <button class="btn" onclick="loadLoad()">↺ Обновить</button>
+        </div>
+        <div class="tw">
+          <table>
+            <thead><tr><th>Сообщение об ошибке</th><th>Контекст</th><th>Кол-во</th><th>Последний раз</th></tr></thead>
+            <tbody id="load-errtb"></tbody>
+          </table>
+        </div>
+      </div>
 
-    </div><!-- /content -->
-  </div><!-- /main -->
+    </div>
+
+    <!-- ══════ ERRORS ══════ -->
+    <div id="p-errors" class="page">
+      <div class="sec">
+        <div class="sec-hd">
+          <h3>Ошибки бота</h3>
+          <div class="tb">
+            <button class="btn" onclick="loadErrors(0)">↺ Обновить</button>
+            <span id="err-count" style="color:var(--muted);font-size:12px;"></span>
+          </div>
+        </div>
+        <div class="tw">
+          <table>
+            <thead><tr><th>Время</th><th>Чат</th><th>Контекст</th><th>Сообщение об ошибке</th></tr></thead>
+            <tbody id="errtb"></tbody>
+          </table>
+        </div>
+        <div class="pag" id="errpag" style="display:none;">
+          <span id="errpi"></span>
+          <div class="pag-btns" id="errpb"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════ HSGURU ══════ -->
+    <div id="p-hsguru" class="page">
+      <div class="sec" style="margin-bottom:20px;">
+        <div class="sec-hd">
+          <h3>HSGuru — Мета Hearthstone</h3>
+          <div class="tb">
+            <select id="hs-format" onchange="loadHsguru()">
+              <option value="1">Стандарт</option>
+              <option value="2">Вольный</option>
+            </select>
+            <button class="btn" onclick="hsForceReload()">↺ Обновить (без кэша)</button>
+            <span id="hs-status" style="color:var(--muted);font-size:12px;"></span>
+          </div>
+        </div>
+        <div class="tw">
+          <table>
+            <thead><tr><th>#</th><th>Архетип</th><th>Класс</th><th>Винрейт</th><th>Игр</th><th>Популярность</th><th>Код колоды</th></tr></thead>
+            <tbody id="hstb"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════ PUBLISH LOGS ══════ -->
+    <div id="p-publogs" class="page">
+      <div class="sec">
+        <div class="sec-hd">
+          <h3>📤 Лог публикаций колод</h3>
+          <div class="tb">
+            <button class="btn" onclick="loadPubLogs(0)">↺ Обновить</button>
+            <span id="pl-count" style="color:var(--muted);font-size:12px;"></span>
+          </div>
+        </div>
+        <div class="tw">
+          <table>
+            <thead><tr><th>Время</th><th>Колода</th><th>Класс</th><th>Режим</th><th>Telegram</th><th>WordPress</th><th>Ошибка</th><th>Код колоды</th></tr></thead>
+            <tbody id="pltb"></tbody>
+          </table>
+        </div>
+        <div class="pag" id="plpag" style="display:none;">
+          <span id="plpi"></span>
+          <div class="pag-btns" id="plpb"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════ ARENA ══════ -->
+    <div id="p-arena" class="page">
+      <div class="sec" style="margin-bottom:20px;">
+        <div class="sec-hd">
+          <h3>🏟️ Арена — Винрейт классов</h3>
+          <div class="tb">
+            <button class="btn" id="arena-tier-btn" onclick="setArenaView('tier')">📊 Тир-лист</button>
+            <button class="btn" id="arena-matrix-btn" onclick="setArenaView('matrix')">🧩 Матрица классов</button>
+            <button class="btn" onclick="loadArena()">↺ Обновить</button>
+            <span id="arena-status" style="color:var(--muted);font-size:12px;"></span>
+          </div>
+        </div>
+        <div class="tw">
+          <table>
+            <thead id="arenahead"><tr><th>#</th><th>Класс</th><th>Винрейт</th><th>Прогресс</th><th>Ранов</th></tr></thead>
+            <tbody id="arenatb"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════ BGS COMPS ══════ -->
+    <div id="p-comps" class="page">
+      <div class="sec" style="margin-bottom:20px;">
+        <div class="sec-hd">
+          <h3>⚔️ Поля сражений — Лучшие стратегии</h3>
+          <div class="tb">
+            <select id="comps-period" onchange="loadComps()">
+              <option value="last-patch">Патч</option>
+              <option value="past-seven">7 дней</option>
+              <option value="past-three">3 дня</option>
+            </select>
+            <button class="btn" onclick="loadComps()">↺ Обновить</button>
+            <span id="comps-status" style="color:var(--muted);font-size:12px;"></span>
+          </div>
+        </div>
+        <div class="tw">
+          <table>
+            <thead><tr><th>#</th><th>Стратегия</th><th>Трайб</th><th>Avg Place</th><th>Прогресс</th><th>Top-4%</th><th>Игр</th></tr></thead>
+            <tbody id="compstb"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════ SCHEMA ══════ -->
+    <div id="p-schema" class="page">
+
+      <div class="erd-box">
+        <h3>Диаграмма связей (ERD)</h3>
+        <div class="erd">
+
+          <div class="en">
+            <div class="en-hd"><span>generated_decks</span><span class="ec">основная</span></div>
+            <div class="ec-row"><span class="ecn"><span class="epk">PK</span>id</span><span class="ect">INTEGER</span></div>
+            <div class="ec-row"><span class="ecn">deck_code</span><span class="ect">TEXT</span></div>
+            <div class="ec-row"><span class="ecn">deck_name</span><span class="ect">TEXT</span></div>
+            <div class="ec-row"><span class="ecn">cost</span><span class="ect">INTEGER</span></div>
+            <div class="ec-row"><span class="ecn">filename</span><span class="ect">TEXT</span></div>
+            <div class="ec-row"><span class="ecn">deck_class</span><span class="ect">TEXT</span></div>
+            <div class="ec-row"><span class="ecn">deck_mode</span><span class="ect">TEXT</span></div>
+            <div class="ec-row"><span class="ecn">source</span><span class="ect">TEXT</span></div>
+            <div class="ec-row"><span class="ecn">user_id</span><span class="ect">INTEGER</span></div>
+            <div class="ec-row"><span class="ecn">created_at</span><span class="ect">TEXT</span></div>
+          </div>
+
+          <div class="arr">1 ──── ∞<div style="font-size:10px;text-align:center;color:var(--muted);">generated_deck_id</div></div>
+
+          <div class="en">
+            <div class="en-hd"><span>deck_cards</span><span class="ec">состав</span></div>
+            <div class="ec-row"><span class="ecn"><span class="efk">FK</span>generated_deck_id</span><span class="ect">INTEGER</span></div>
+            <div class="ec-row"><span class="ecn">dbf_id</span><span class="ect">INTEGER</span></div>
+          </div>
+
+          <div style="width:30px;"></div>
+
+          <div class="en">
+            <div class="en-hd"><span>bot_users</span><span class="ec">пользователи</span></div>
+            <div class="ec-row"><span class="ecn"><span class="epk">PK</span>user_id</span><span class="ect">INTEGER</span></div>
+            <div class="ec-row"><span class="ecn">username</span><span class="ect">TEXT</span></div>
+            <div class="ec-row"><span class="ecn">first_name</span><span class="ect">TEXT</span></div>
+            <div class="ec-row"><span class="ecn">first_seen</span><span class="ect">TEXT</span></div>
+            <div class="ec-row"><span class="ecn">last_seen</span><span class="ect">TEXT</span></div>
+          </div>
+
+          <div style="width:30px;"></div>
+
+          <div class="en">
+            <div class="en-hd"><span>bot_events</span><span class="ec">события</span></div>
+            <div class="ec-row"><span class="ecn"><span class="epk">PK</span>id</span><span class="ect">INTEGER</span></div>
+            <div class="ec-row"><span class="ecn">event_type</span><span class="ect">TEXT</span></div>
+            <div class="ec-row"><span class="ecn">chat_type</span><span class="ect">TEXT</span></div>
+            <div class="ec-row"><span class="ecn">payload</span><span class="ect">TEXT</span></div>
+            <div class="ec-row"><span class="ecn">created_at</span><span class="ect">TEXT</span></div>
+          </div>
+
+          <div style="width:30px;"></div>
+
+          <div class="en">
+            <div class="en-hd"><span>user_saved_decks</span><span class="ec">избранное</span></div>
+            <div class="ec-row"><span class="ecn"><span class="efk">FK</span>user_id</span><span class="ect">INTEGER</span></div>
+            <div class="ec-row"><span class="ecn"><span class="efk">FK</span>generated_deck_id</span><span class="ect">INTEGER</span></div>
+            <div class="ec-row"><span class="ecn">saved_at</span><span class="ect">TEXT</span></div>
+          </div>
+
+        </div>
+      </div>
+
+      <div class="schema-grid" id="schema-grid">
+        <div class="empty"><span class="sp"></span>Загрузка схемы…</div>
+      </div>
+    </div>
+
+    <!-- ══════ ARCHETYPES ══════ -->
+    <div id="p-archetypes" class="page">
+      <div class="sec">
+        <div class="sec-hd">
+          <h3>Переводы архетипов (English → Russian) <span id="arch-count" class="badge bn" style="font-size:11px;margin-left:8px;"></span></h3>
+          <div class="tb">
+            <input id="arch-search" type="text" placeholder="Поиск..." oninput="archSearch()" style="min-width:220px;"/>
+            <button class="btn" style="background:#1e3a5f;color:#60a5fa;border-color:#2563eb;" onclick="archImport()">⬇ Импорт из Google Таблицы</button>
+            <button class="btn" style="background:var(--accent);color:#fff;border-color:var(--accent);" onclick="archOpenAdd()">+ Добавить</button>
+          </div>
+        </div>
+        <div class="tw">
+          <table>
+            <thead><tr>
+              <th style="width:50px;">#</th>
+              <th>Английское название</th>
+              <th>Русский перевод</th>
+              <th style="width:150px;">Действия</th>
+            </tr></thead>
+            <tbody id="arch-tb"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /content -->
+</div><!-- /main -->
 </div><!-- /shell -->
+
+<!-- ─── Archetype Add/Edit Modal ──────────────────────── -->
+<div class="modal-bg" id="arch-modal">
+  <div class="modal" style="max-width:480px;">
+    <div class="modal-head">
+      <h2 id="arch-modal-title">Добавить архетип</h2>
+      <button class="modal-close" onclick="archCloseModal()">✕</button>
+    </div>
+    <div class="modal-body" style="padding:20px 24px;">
+      <label style="display:block;font-size:12px;font-weight:600;color:var(--muted);margin-bottom:5px;text-transform:uppercase;letter-spacing:.05em;">Английское название</label>
+      <input type="text" id="arch-name-en" placeholder="e.g. Aggro Paladin" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:7px;font-size:14px;outline:none;margin-bottom:16px;background:var(--surface);color:var(--text);"/>
+      <label style="display:block;font-size:12px;font-weight:600;color:var(--muted);margin-bottom:5px;text-transform:uppercase;letter-spacing:.05em;">Русский перевод</label>
+      <input type="text" id="arch-name-ru" placeholder="e.g. Агро Паладин" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:7px;font-size:14px;outline:none;margin-bottom:0;background:var(--surface);color:var(--text);"/>
+    </div>
+    <div style="padding:14px 24px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px;">
+      <button class="btn" onclick="archCloseModal()">Отмена</button>
+      <button class="btn" style="background:var(--accent);color:#fff;border-color:var(--accent);" onclick="archSave()">Сохранить</button>
+    </div>
+  </div>
+</div>
+
+<!-- ─── Archetype Delete Confirm Modal ────────────────── -->
+<div class="modal-bg" id="arch-del-modal">
+  <div class="modal" style="max-width:400px;">
+    <div class="modal-head">
+      <h2>Удалить архетип?</h2>
+      <button class="modal-close" onclick="archCloseDelModal()">✕</button>
+    </div>
+    <div class="modal-body" style="padding:20px 24px;">
+      <p id="arch-del-msg" style="font-size:14px;color:var(--muted);"></p>
+    </div>
+    <div style="padding:14px 24px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px;">
+      <button class="btn" onclick="archCloseDelModal()">Отмена</button>
+      <button class="btn" style="background:var(--red);color:#fff;border-color:var(--red);" onclick="archConfirmDelete()">Удалить</button>
+    </div>
+  </div>
+</div>
 
 <div id="toast"></div>
 
 <script>
+// ── Config ───────────────────────────────────────────────
+const BASE = '/admin';
+
+function qs(extra){
+  const p=new URLSearchParams(extra||{});
+  return p.toString() ? '?'+p.toString() : '';
+}
+
 // ── Helpers ──────────────────────────────────────────────
-function $(id) { return document.getElementById(id); }
+function $(i){return document.getElementById(i);}
+function toast(m,d=2500){const e=$('toast');e.textContent=m;e.classList.add('show');clearTimeout(e._t);e._t=setTimeout(()=>e.classList.remove('show'),d);}
+function fmtDt(iso){if(!iso)return'—';const d=new Date(iso);return isNaN(d)?iso:d.toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});}
+function fmtDust(n){return n==null?'—':Number(n).toLocaleString('ru-RU')+' 💨';}
+function load(msg){return`<tr><td colspan="99" class="empty"><span class="sp"></span>${msg||'Загрузка…'}</td></tr>`;}
 
-function toast(msg, duration = 2500) {
-  const el = $('toast');
-  el.textContent = msg;
-  el.classList.add('show');
-  clearTimeout(el._t);
-  el._t = setTimeout(() => el.classList.remove('show'), duration);
-}
-
-function debounce(fn, ms) {
-  let t;
-  return function (...args) {
-    clearTimeout(t);
-    t = setTimeout(() => fn.apply(this, args), ms);
-  };
-}
-
-// ── Theme (light/dark) ───────────────────────────────────
-function applyTheme(theme) {
-  document.documentElement.setAttribute('data-theme', theme);
-  $('theme-btn').textContent = theme === 'dark' ? '☀️' : '🌙';
-  localStorage.setItem('dv_theme', theme);
-  // Перерисовать графики, чтобы подтянуть цвета сетки.
-  if (chartDaily || chartModes || chartCosts) {
-    const cached = JSON.parse(localStorage.getItem('dv_overview') || 'null');
-    if (cached) renderOverview(cached);
-  }
-}
-function toggleTheme() {
-  const cur = document.documentElement.getAttribute('data-theme') || 'light';
-  applyTheme(cur === 'dark' ? 'light' : 'dark');
-}
-(function initTheme() {
-  const saved = localStorage.getItem('dv_theme');
-  const system = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-  document.documentElement.setAttribute('data-theme', saved || system);
-})();
-
-// ── Sidebar (mobile) ──────────────────────────────────────
-function toggleSidebar(force) {
-  const sb = document.querySelector('.sidebar');
-  const sc = $('scrim');
-  const open = force === undefined ? !sb.classList.contains('open') : force;
-  sb.classList.toggle('open', open);
-  sc.classList.toggle('show', open);
-}
-
-// ── Auto-refresh ──────────────────────────────────────────
-let _autoRefreshTimer = null;
-function toggleAutoRefresh() {
-  const btn = $('autorefresh-btn');
-  if (_autoRefreshTimer) {
-    clearInterval(_autoRefreshTimer);
-    _autoRefreshTimer = null;
-    btn.classList.remove('on');
-    toast('Авто-обновление выключено');
-  } else {
-    _autoRefreshTimer = setInterval(() => pageInit(_currentPage), 30000);
-    btn.classList.add('on');
-    toast('Авто-обновление: каждые 30 сек');
-  }
-}
-
-function fmtDate(iso) {
-  if (!iso) return '—';
-  const d = new Date(iso);
-  if (isNaN(d)) return iso;
-  return d.toLocaleString('ru-RU', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' });
-}
-
-function fmtDust(n) {
-  if (n == null) return '—';
-  return Number(n).toLocaleString('ru-RU') + ' 💨';
-}
-
-function modeBadge(mode) {
-  if (!mode) return '<span class="badge badge-neutral">—</span>';
-  const map = {
-    'Стандарт':     'badge-blue',
-    'Standard':     'badge-blue',
-    'Вольный':      'badge-green',
-    'Wild':         'badge-green',
-    'Классический': 'badge-amber',
-    'Classic':      'badge-amber',
-    'Потасовка':    'badge-purple',
-    'Twist':        'badge-purple',
-  };
-  const cls = map[mode] || 'badge-neutral';
-  return `<span class="badge ${cls}">${mode}</span>`;
-}
-
-// ── Navigation ───────────────────────────────────────────
-let _currentPage = 'overview';
-const _pageLoaded = {};
-
-function showPage(name, el) {
-  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-  $(`page-${name}`).classList.add('active');
-  el.classList.add('active');
-  $('topbar-title').textContent = el.textContent.trim();
-  _currentPage = name;
-  if (!_pageLoaded[name]) {
-    _pageLoaded[name] = true;
-    pageInit(name);
-  }
-}
-
-function refreshCurrent() {
-  _pageLoaded[_currentPage] = false;
-  // Для тяжёлого HSGuru — принудительно обходим серверный кэш.
-  if (_currentPage === 'streamer-decks') {
-    loadStreamerDecks(true);
-  } else {
-    pageInit(_currentPage);
-  }
-  toast('Данные обновлены');
-}
-
-function pageInit(name) {
-  if (name === 'overview')        loadOverview();
-  if (name === 'decks')           loadDecks(1);
-  if (name === 'votes')           loadVotes();
-  if (name === 'schema')          loadSchema();
-  if (name === 'streamer-decks')  loadStreamerDecks();
-}
-
-// ── API calls ────────────────────────────────────────────
-async function apiFetch(path) {
-  const r = await fetch(path);
-  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+async function api(path,params){
+  const r=await fetch(BASE+path+qs(params));
+  if(!r.ok)throw new Error('HTTP '+r.status);
   return r.json();
 }
 
+// ── Badges ───────────────────────────────────────────────
+const CLASS_CLS={
+  'Воин':'bb','Охотник':'bg','Маг':'bp','Паладин':'ba',
+  'Жрец':'bn','Чернокнижник':'br','Разбойник':'bn',
+  'Шаман':'bb','Друид':'bg','Охотник на демонов':'bp','Рыцарь Смерти':'br'
+};
+const MODE_CLS={'Стандарт':'bb','Вольный':'bg','Классический':'ba','Потасовка':'bp'};
+
+function badge(txt,cls){return txt?`<span class="badge ${cls||'bn'}">${txt}</span>`:'<span class="badge bn">—</span>';}
+function classBadge(c){return badge(c,CLASS_CLS[c]||'bn');}
+function modeBadge(m){return badge(m,MODE_CLS[m]||'bn');}
+function srcBadge(s){return badge(s||'web',s==='bot'||s==='telegram'?'bb':'bn');}
+
+function evBadge(t){
+  const m={'deck_code':'bg','card':'bb','findwith':'bp','publish':'ba','error':'br'};
+  return badge(t||'—',m[t]||'bn');
+}
+
+// ── Navigation ───────────────────────────────────────────
+let _cur='overview';const _loaded={};
+function go(name,el){
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.ni').forEach(n=>n.classList.remove('active'));
+  $(`p-${name}`).classList.add('active');
+  el.classList.add('active');
+  $('tt').textContent=el.textContent.trim();
+  _cur=name;
+  if(!_loaded[name]){_loaded[name]=true;init(name);}
+}
+function refresh(){_loaded[_cur]=false;init(_cur);toast('Обновлено');}
+function init(n){
+  if(n==='overview') loadOverview();
+  if(n==='decks')    loadDecks(1);
+  if(n==='users')    loadUsers(1);
+  if(n==='events')   loadEvents(0);
+  if(n==='load')     loadLoad();
+  if(n==='errors')   loadErrors(0);
+  if(n==='hsguru')   loadHsguru(1);
+  if(n==='publogs')  loadPubLogs(0);
+  if(n==='arena')    loadArena();
+  if(n==='comps')    loadComps();
+  if(n==='schema')   loadSchema();
+  if(n==='archetypes') loadArchetypes();
+}
+
+// ── Charts registry ──────────────────────────────────────
+const _ch={};
+function mkChart(id,cfg){if(_ch[id])_ch[id].destroy();_ch[id]=new Chart($(id),cfg);}
+
+const PALETTE=['#3b82f6','#22c55e','#f59e0b','#ef4444','#a78bfa','#60a5fa','#4ade80',
+               '#fbbf24','#f87171','#c084fc','#38bdf8','#8b8d98'];
+
 // ── Overview ─────────────────────────────────────────────
-let chartDaily = null, chartModes = null, chartCosts = null;
-
-function renderOverview(o) {
-  $('s-total').textContent    = o.total_decks ?? '—';
-  $('s-today').textContent    = o.today_decks ?? '—';
-  $('s-week').textContent     = o.week_decks  ?? '—';
-  $('s-likes').textContent    = o.total_likes ?? '—';
-  $('s-dislikes').textContent = o.total_dislikes ?? '—';
-  ['s-total','s-today','s-week','s-likes','s-dislikes'].forEach(id => $(id).classList.remove('skeleton'));
-  renderDailyChart(o.daily || []);
-  renderModesChart(o.modes || []);
-  renderCostsChart(o.costs || []);
+async function loadOverview(){
+  $('ts').innerHTML='<span class="sp"></span>';
+  try{
+    const[ov,daily,modes,classes,costs]=await Promise.all([
+      api('/api/overview'),
+      api('/api/charts/daily',{days:30}),
+      api('/api/charts/modes'),
+      api('/api/charts/classes'),
+      api('/api/charts/costs'),
+    ]);
+    renderStatCards(ov);
+    renderDaily(daily);
+    renderModes(modes);
+    renderClasses(classes);
+    renderCosts(costs);
+    $('ts').textContent='Обновлено '+new Date().toLocaleTimeString('ru-RU');
+  }catch(e){$('ts').textContent='⚠ Ошибка';console.error(e);}
 }
 
-async function loadOverview() {
-  // Мгновенно показать прошлые данные из localStorage (если есть),
-  // потом — обновить в фоне свежими.
-  const cached = JSON.parse(localStorage.getItem('dv_overview') || 'null');
-  if (cached) renderOverview(cached);
-  else ['s-total','s-today','s-week','s-likes','s-dislikes'].forEach(id => { $(id).textContent = '0000'; $(id).classList.add('skeleton'); });
-
-  $('topbar-status').innerHTML = '<span class="spinner"></span>';
-  try {
-    const data = await apiFetch('/admin/overview');
-    renderOverview(data);
-    localStorage.setItem('dv_overview', JSON.stringify(data));
-    $('topbar-status').textContent = 'Обновлено ' + new Date().toLocaleTimeString('ru-RU');
-  } catch (e) {
-    $('topbar-status').textContent = cached ? '⚠ Ошибка — показаны кэш-данные' : '⚠ Ошибка загрузки';
-    console.error(e);
-  }
+function renderStatCards(o){
+  const cards=[
+    {lbl:'Всего колод',   val:o.total_decks,   sub:'в базе данных', cls:''},
+    {lbl:'Сегодня',       val:o.today_decks,   sub:'новых колод',   cls:'b'},
+    {lbl:'За 7 дней',     val:o.week_decks,    sub:'новых колод',   cls:''},
+    {lbl:'Пользователи',  val:o.total_users,   sub:'в боте',        cls:'g'},
+    {lbl:'События',       val:o.total_events,  sub:'всего',         cls:''},
+    {lbl:'Генераций',     val:o.deck_events,   sub:'колод',         cls:'b'},
+    {lbl:'Публикаций',    val:o.publish_events,sub:'в канал',       cls:'a'},
+    {lbl:'Ошибок',        val:o.error_events,  sub:'событий',       cls:'r'},
+  ];
+  $('sg').innerHTML=cards.map(c=>`
+    <div class="sc ${c.cls}">
+      <div class="lbl">${c.lbl}</div>
+      <div class="val">${c.val??'—'}</div>
+      <div class="sub">${c.sub}</div>
+    </div>`).join('');
 }
 
-function _cssVar(name) {
-  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+function renderDaily(data){
+  mkChart('ch-daily',{type:'line',data:{
+    labels:data.map(d=>d.day),
+    datasets:[{label:'Колод',data:data.map(d=>d.count),
+      borderColor:'#3b82f6',backgroundColor:'rgba(59,130,246,.12)',
+      fill:true,tension:.3,pointRadius:3,pointBackgroundColor:'#3b82f6'}]
+  },options:{responsive:true,maintainAspectRatio:false,
+    plugins:{legend:{display:false}},
+    scales:{y:{beginAtZero:true,grid:{color:'#2a2d3a'},ticks:{color:'#8b8d98',precision:0}},
+            x:{grid:{display:false},ticks:{color:'#8b8d98',maxRotation:40,font:{size:10}}}}}});
 }
 
-function renderDailyChart(data) {
-  const labels = data.map(d => d.day);
-  const values = data.map(d => d.count);
-  const text   = _cssVar('--text');
-  const grid   = _cssVar('--grid');
-  const tick   = _cssVar('--tick');
-  if (chartDaily) chartDaily.destroy();
-  chartDaily = new Chart($('chart-daily'), {
-    type: 'line',
-    data: {
-      labels,
-      datasets: [{
-        label: 'Колод',
-        data: values,
-        borderColor: text,
-        backgroundColor: text + '15',
-        fill: true,
-        tension: .3,
-        pointRadius: 3,
-        pointBackgroundColor: text,
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: { legend: { display: false } },
-      scales: {
-        y: { beginAtZero: true, grid: { color: grid }, ticks: { color: tick, precision: 0 } },
-        x: { grid: { display: false }, ticks: { color: tick, maxRotation: 40, font: { size: 11 } } }
-      }
-    }
-  });
+function renderModes(data){
+  mkChart('ch-modes',{type:'doughnut',data:{
+    labels:data.map(d=>d.mode),
+    datasets:[{data:data.map(d=>d.count),backgroundColor:PALETTE.slice(0,data.length),borderWidth:0}]
+  },options:{responsive:true,maintainAspectRatio:false,
+    plugins:{legend:{position:'right',labels:{color:'#8b8d98',font:{size:11},boxWidth:12,padding:8}}}}});
 }
 
-function renderModesChart(data) {
-  const palette = [_cssVar('--blue'), _cssVar('--green'), _cssVar('--amber'), _cssVar('--red'), _cssVar('--muted')];
-  const text    = _cssVar('--text');
-  if (chartModes) chartModes.destroy();
-  chartModes = new Chart($('chart-modes'), {
-    type: 'doughnut',
-    data: {
-      labels: data.map(d => d.mode),
-      datasets: [{
-        data: data.map(d => d.count),
-        backgroundColor: palette.slice(0, data.length),
-        borderWidth: 0,
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: { position: 'right', labels: { color: text, font: { size: 12 }, boxWidth: 12, padding: 10 } }
-      }
-    }
-  });
+function renderClasses(data){
+  mkChart('ch-classes',{type:'bar',data:{
+    labels:data.map(d=>d.name),
+    datasets:[{label:'Колод',data:data.map(d=>d.count),
+      backgroundColor:'#2a2d3a',borderColor:'#3a3d4a',borderWidth:1,borderRadius:4}]
+  },options:{responsive:true,maintainAspectRatio:false,
+    plugins:{legend:{display:false}},
+    scales:{y:{beginAtZero:true,grid:{color:'#2a2d3a'},ticks:{color:'#8b8d98',precision:0}},
+            x:{grid:{display:false},ticks:{color:'#8b8d98',font:{size:11}}}}}});
 }
 
-function renderCostsChart(data) {
-  const grid = _cssVar('--grid');
-  const tick = _cssVar('--tick');
-  const fill = _cssVar('--accent-lt');
-  const bord = _cssVar('--muted');
-  if (chartCosts) chartCosts.destroy();
-  chartCosts = new Chart($('chart-costs'), {
-    type: 'bar',
-    data: {
-      labels: data.map(d => d.bucket),
-      datasets: [{
-        label: 'Колод',
-        data: data.map(d => d.count),
-        backgroundColor: fill,
-        borderColor: bord,
-        borderWidth: 1,
-        borderRadius: 4,
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: { legend: { display: false } },
-      scales: {
-        y: { beginAtZero: true, grid: { color: grid }, ticks: { color: tick, precision: 0 } },
-        x: { grid: { display: false }, ticks: { color: tick, font: { size: 12 } } }
-      }
-    }
-  });
-}
-
-// ── CSV export ───────────────────────────────────────────
-function exportDecksCSV() {
-  const params = new URLSearchParams();
-  const search = $('deck-search').value.trim();
-  const mode   = $('deck-mode-filter').value;
-  if (search) params.set('search', search);
-  if (mode)   params.set('mode', mode);
-  const url = '/admin/decks.csv' + (params.toString() ? '?' + params : '');
-  // Триггерим скачивание через скрытую ссылку.
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'decks.csv';
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  toast('Загрузка CSV…');
+function renderCosts(data){
+  mkChart('ch-costs',{type:'bar',data:{
+    labels:data.map(d=>d.bucket),
+    datasets:[{label:'Колод',data:data.map(d=>d.count),
+      backgroundColor:'#2a2d3a',borderColor:'#3a3d4a',borderWidth:1,borderRadius:4}]
+  },options:{responsive:true,maintainAspectRatio:false,
+    plugins:{legend:{display:false}},
+    scales:{y:{beginAtZero:true,grid:{color:'#2a2d3a'},ticks:{color:'#8b8d98',precision:0}},
+            x:{grid:{display:false},ticks:{color:'#8b8d98',font:{size:11}}}}}});
 }
 
 // ── Decks ─────────────────────────────────────────────────
-let _deckPage = 1;
+let _dp=1;
+async function loadDecks(page){
+  _dp=page||1;
+  const [sb,sd]=($('d-sort').value||'created_at|desc').split('|');
+  const params={page:_dp,per_page:30,sort_by:sb,sort_dir:sd};
+  const cls=$('d-class').value;const mode=$('d-mode').value;const srch=$('d-search').value.trim();
+  if(cls)params.deck_class=cls;
+  if(mode)params.deck_mode=mode;
+  if(srch)params.search=srch;
+  $('dtb').innerHTML=load();
+  try{
+    const d=await api('/api/decks',params);
+    renderDecks(d);
+  }catch(e){$('dtb').innerHTML=`<tr><td colspan="9" class="empty">Ошибка загрузки</td></tr>`;console.error(e);}
+}
 
-async function loadDecks(page) {
-  _deckPage = page || 1;
-  const search   = $('deck-search').value.trim();
-  const mode     = $('deck-mode-filter').value;
-  const sortRaw  = $('deck-sort').value;
-  const [sortBy, sortDir] = sortRaw.split('|');
+function copyCode(code,btn){
+  navigator.clipboard.writeText(code).then(()=>{
+    btn.textContent='✓';btn.classList.add('ok');
+    setTimeout(()=>{btn.textContent='⎘';btn.classList.remove('ok');},1500);
+  }).catch(()=>toast('Не удалось скопировать'));
+}
 
-  let url = `/admin/decks?page=${_deckPage}&per_page=30&sort_by=${sortBy}&sort_dir=${sortDir}`;
-  if (mode)   url += `&mode=${encodeURIComponent(mode)}`;
-  if (search) url += `&search=${encodeURIComponent(search)}`;
+function deckImgCell(r){
+  if(!r.filename||r.filename.startsWith('bot:'))
+    return`<span style="color:var(--muted);font-size:11px;">Telegram</span>`;
+  const url='/static/generated/'+r.filename;
+  return`<a href="${url}" target="_blank" style="display:inline-block;line-height:0;">
+    <img src="${url}" style="height:40px;width:auto;border-radius:4px;border:1px solid var(--border);" loading="lazy" onerror="this.style.display='none'"/>
+  </a>`;
+}
 
-  $('deck-tbody').innerHTML = `<tr><td colspan="5" class="empty"><span class="spinner"></span>Загрузка...</td></tr>`;
+function renderDecks(d){
+  const off=(d.page-1)*d.per_page;
+  $('dtb').innerHTML=!d.items?.length
+    ?`<tr><td colspan="9" class="empty">Колоды не найдены</td></tr>`
+    :d.items.map((r,i)=>`<tr class="user-row" onclick="openDeckLog(${r.id})" title="Открыть лог колоды">
+        <td style="color:var(--muted);font-size:12px;">${off+i+1}</td>
+        <td style="max-width:200px;" onclick="event.stopPropagation()">
+          <div class="deck-code-cell">
+            <span class="mono cell-clip" style="max-width:170px;" title="${r.deck_code}">${r.deck_code}</span>
+            <button class="copy-btn" title="Скопировать код" onclick="copyCode('${r.deck_code.replace(/'/g,"\\'")}',this)">⎘</button>
+          </div>
+        </td>
+        <td class="cell-clip" style="max-width:130px;">${r.deck_name||'<span style="color:var(--muted)">—</span>'}</td>
+        <td>${classBadge(r.deck_class)}</td>
+        <td>${modeBadge(r.deck_mode)}</td>
+        <td style="font-weight:600;">${fmtDust(r.cost)}</td>
+        <td>${srcBadge(r.source)}</td>
+        <td>${deckImgCell(r)}</td>
+        <td style="color:var(--muted);font-size:12px;">${fmtDt(r.created_at)}</td>
+      </tr>`).join('');
+  renderPag('dpag','dpi','dpb',d,loadDecks);
+}
 
-  try {
-    const data = await apiFetch(url);
-    renderDecks(data);
-  } catch(e) {
-    $('deck-tbody').innerHTML = `<tr><td colspan="5" class="empty">Ошибка загрузки данных</td></tr>`;
+// ── Deck Log Modal ───────────────────────────────────────
+function closeDeckModal(e){if(e.target===$('deck-modal'))closeDeckModalDirect();}
+function closeDeckModalDirect(){$('deck-modal').classList.remove('open');}
+
+function ll(ts,tag,tagCls,msg,msgCls){
+  return`<div class="log-line">
+    <span class="log-ts">${ts||''}</span>
+    <span class="log-tag ${tagCls||'tag-dim'}">${tag||'·'}</span>
+    <span class="log-msg ${msgCls||''}">${msg}</span>
+  </div>`;
+}
+function lkv(key,val,valCls){
+  return`<div class="log-line">
+    <span class="log-ts"></span><span class="log-tag tag-dim">  </span>
+    <span class="log-key">${key}</span>
+    <span class="log-val"> = </span>
+    <span class="${valCls||'log-str'}">${val}</span>
+  </div>`;
+}
+
+async function openDeckLog(deckId){
+  $('dm-title').textContent='deck #'+deckId+'.log';
+  $('dm-meta').textContent='';
+  $('dm-console').innerHTML=`<div class="log-section"><div class="log-line"><span class="tag-info log-tag">›</span><span class="log-msg">Загрузка данных…</span></div></div>`;
+  $('deck-modal').classList.add('open');
+  try{
+    const d=await api('/api/decks/'+deckId);
+    renderDeckLog(d);
+  }catch(e){
+    $('dm-console').innerHTML=`<div class="log-section"><div class="log-line"><span class="tag-err log-tag">✕</span><span class="log-msg">Ошибка: ${e.message}</span></div></div>`;
+  }
+}
+
+function renderDeckLog(d){
+  const k=d.deck;
+  const ts=t=>t?t.replace('T',' ').slice(0,19):'—';
+  $('dm-title').textContent=`deck #${k.id} · ${k.deck_class||'?'} · ${k.deck_mode||'?'}`;
+  $('dm-meta').textContent=`ID ${k.id} · ${k.source||'—'} · ${ts(k.created_at)}`;
+
+  let html='';
+
+  // ── Section 1: Метаданные
+  html+=`<div class="log-section"><div class="log-sec-hd">metadata</div>`;
+  html+=ll(ts(k.created_at),'INFO','tag-info','deck generated');
+  html+=lkv('id',         k.id,                'log-num');
+  html+=lkv('source',     `"${k.source||'—'}"`, 'log-str');
+  html+=lkv('deck_class', `"${k.deck_class||'—'}"`, 'log-str');
+  html+=lkv('deck_mode',  `"${k.deck_mode||'—'}"`, 'log-str');
+  html+=lkv('cost',       (k.cost??'null')+' dust', 'log-num');
+  html+=lkv('deck_name',  k.deck_name?`"${k.deck_name}"`:'null', k.deck_name?'log-str':'tag-dim');
+  html+=lkv('filename',   `"${k.filename||'—'}"`, 'log-val');
+  html+=lkv('user_id',    k.user_id??'null', k.user_id?'log-num':'tag-dim');
+  html+=`</div>`;
+
+  // ── Section 2: deck_code (полный)
+  html+=`<div class="log-section"><div class="log-sec-hd">deck_code</div>`;
+  html+=`<div class="log-line"><span class="log-ts"></span><span class="log-tag tag-ok">⎘</span>
+    <span class="log-msg log-str" style="word-break:break-all;cursor:pointer;" title="Кликни чтобы скопировать" onclick="navigator.clipboard.writeText('${k.deck_code.replace(/'/g,"\\'")}').then(()=>toast('Код скопирован'))">${k.deck_code}</span>
+  </div>`;
+  html+=`</div>`;
+
+  // ── Section 3: User
+  if(d.user){
+    const u=d.user;
+    const uname=u.first_name||(u.username?'@'+u.username:'User '+u.user_id);
+    html+=`<div class="log-section"><div class="log-sec-hd">user</div>`;
+    html+=ll('','USER','tag-info',`${uname}`);
+    html+=lkv('user_id',  u.user_id,                     'log-num');
+    html+=lkv('username', u.username?`"@${u.username}"`:'null', u.username?'log-str':'tag-dim');
+    html+=lkv('first_seen', `"${ts(u.first_seen)}"`,     'log-val');
+    html+=lkv('last_seen',  `"${ts(u.last_seen)}"`,      'log-val');
+    if(d.sibling_decks?.length){
+      html+=lkv('other_decks', d.sibling_decks.length+' колод у пользователя', 'log-num');
+    }
+    html+=`</div>`;
+  } else {
+    html+=`<div class="log-section"><div class="log-sec-hd">user</div>`;
+    html+=ll('','WARN','tag-warn','user_id not set — anonymous request');
+    html+=`</div>`;
+  }
+
+  // ── Section 4: Cards
+  html+=`<div class="log-section"><div class="log-sec-hd">deck_cards (${d.cards.length} dbf_ids)</div>`;
+  if(d.cards.length){
+    html+=`<div class="log-cards">${d.cards.map(id=>`<span class="log-card-id">${id}</span>`).join('')}</div>`;
+  } else {
+    html+=ll('','WARN','tag-warn','no cards stored for this deck');
+  }
+  html+=`</div>`;
+
+  // ── Section 5: Nearby events
+  html+=`<div class="log-section"><div class="log-sec-hd">nearby events (±10 min, ${d.nearby_events.length} found)</div>`;
+  if(!d.nearby_events.length){
+    html+=ll('','DIM','tag-dim','no bot events in ±10 min window');
+  } else {
+    d.nearby_events.forEach(ev=>{
+      const isErr=ev.event_type==='error';
+      const tag=isErr?'ERR':'EVT';
+      const cls=isErr?'tag-err':'tag-ok';
+      let payload='';
+      if(ev.payload){
+        if(typeof ev.payload==='object')payload=' · '+JSON.stringify(ev.payload);
+        else payload=' · '+String(ev.payload).slice(0,80);
+      }
+      html+=ll(ts(ev.created_at),tag,cls,`[${ev.event_type}] ${ev.chat_type||''}${payload}`);
+    });
+  }
+  html+=`</div>`;
+
+  // ── Section 6: Sibling decks (если user_id есть)
+  if(d.sibling_decks?.length){
+    html+=`<div class="log-section"><div class="log-sec-hd">other decks by this user</div>`;
+    d.sibling_decks.forEach(s=>{
+      html+=ll(ts(s.created_at),'DECK','tag-info',
+        `#${s.id} ${s.deck_class||'?'} / ${s.deck_mode||'?'} · ${s.cost??'?'} dust`,
+        'log-val');
+    });
+    html+=`</div>`;
+  }
+
+  $('dm-console').innerHTML=html;
+}
+
+// ── Users ─────────────────────────────────────────────────
+let _up=1;
+async function loadUsers(page){
+  _up=page||1;
+  const params={page:_up,per_page:50};
+  const srch=$('u-search').value.trim();
+  if(srch)params.search=srch;
+  $('utb').innerHTML=load();
+  try{
+    const d=await api('/api/users',params);
+    renderUsers(d);
+  }catch(e){$('utb').innerHTML=`<tr><td colspan="5" class="empty">Ошибка загрузки</td></tr>`;console.error(e);}
+}
+
+function actLevel(n){
+  if(!n)     return{cls:'act-none',label:'Нет',pct:2};
+  if(n<=3)   return{cls:'act-low', label:'Низкая',  pct:20};
+  if(n<=15)  return{cls:'act-mid', label:'Средняя', pct:45};
+  if(n<=50)  return{cls:'act-high',label:'Высокая', pct:72};
+               return{cls:'act-top', label:'Топ',     pct:100};
+}
+
+function actHtml(n){
+  const a=actLevel(n);
+  return`<div class="act ${a.cls}">
+    <div class="act-bar"><div class="act-fill" style="width:${a.pct}%"></div></div>
+    <span class="act-label">${a.label}</span>
+  </div>`;
+}
+
+function renderUsers(d){
+  $('utb').innerHTML=!d.items?.length
+    ?`<tr><td colspan="7" class="empty">Пользователи не найдены</td></tr>`
+    :d.items.map(r=>`<tr class="user-row" onclick="openUser(${r.user_id})">
+        <td class="mono">${r.user_id}</td>
+        <td>${r.username?'<span style="color:var(--blue)">@'+r.username+'</span>':'<span style="color:var(--muted)">—</span>'}</td>
+        <td>${r.first_name||'<span style="color:var(--muted)">—</span>'}</td>
+        <td><strong>${r.deck_count}</strong></td>
+        <td>${actHtml(r.deck_count)}</td>
+        <td style="color:var(--muted);font-size:12px;">${fmtDt(r.first_seen)}</td>
+        <td style="color:var(--muted);font-size:12px;">${fmtDt(r.last_seen)}</td>
+      </tr>`).join('');
+  renderPag('upag','upi','upb',d,loadUsers);
+}
+
+// ── User modal ────────────────────────────────────────────
+async function openUser(uid){
+  $('m-title').textContent='Загрузка…';
+  $('m-meta').textContent='';
+  $('m-stats').innerHTML='';
+  $('m-tbody').innerHTML=load();
+  $('user-modal').classList.add('open');
+  try{
+    const d=await api('/api/users/'+uid);
+    if(!d.profile){$('m-title').textContent='Пользователь не найден';return;}
+    const p=d.profile;
+    const name=p.first_name||(p.username?'@'+p.username:'ID '+p.user_id);
+    $('m-title').textContent=name;
+    const parts=[];
+    if(p.username)parts.push('@'+p.username);
+    parts.push('ID: '+p.user_id);
+    $('m-meta').textContent=parts.join(' · ');
+
+    const al=actLevel(d.total_decks);
+    $('m-stats').innerHTML=`
+      <div class="modal-stat"><div class="ms-val">${d.total_decks}</div><div class="ms-lbl">Колод</div></div>
+      <div class="modal-stat"><div class="ms-val" style="font-size:14px;">${d.fav_class||'—'}</div><div class="ms-lbl">Любимый класс</div></div>
+      <div class="modal-stat"><div class="ms-val" style="font-size:14px;">${d.fav_mode||'—'}</div><div class="ms-lbl">Режим</div></div>
+      <div class="modal-stat"><div class="ms-val">${d.avg_cost?Number(d.avg_cost).toLocaleString('ru-RU'):0}</div><div class="ms-lbl">Ср. стоимость 💨</div></div>
+      <div class="modal-stat"><div class="ms-val" style="font-size:15px;" class="${al.cls}">${al.label}</div><div class="ms-lbl">Активность</div></div>
+    `;
+
+    if(!d.decks?.length){
+      $('m-tbody').innerHTML=`<tr><td colspan="6" class="empty">Колод нет</td></tr>`;
+    }else{
+      $('m-tbody').innerHTML=d.decks.map((r,i)=>`<tr>
+        <td style="color:var(--muted);font-size:11px;">${i+1}</td>
+        <td class="cell-clip mono" style="max-width:200px;" title="${r.deck_code}">${r.deck_code}</td>
+        <td>${classBadge(r.deck_class)}</td>
+        <td>${modeBadge(r.deck_mode)}</td>
+        <td style="font-weight:600;">${fmtDust(r.cost)}</td>
+        <td style="color:var(--muted);font-size:11px;">${fmtDt(r.created_at)}</td>
+      </tr>`).join('');
+    }
+  }catch(e){$('m-title').textContent='Ошибка загрузки';console.error(e);}
+}
+
+function closeModal(e){if(e.target===$('user-modal'))closeModalDirect();}
+function closeModalDirect(){$('user-modal').classList.remove('open');}
+document.addEventListener('keydown',e=>{
+  if(e.key==='Escape'){closeModalDirect();closeDeckModalDirect();archCloseModal();archCloseDelModal();}
+  if(e.key==='Enter'&&$('arch-modal').classList.contains('open'))archSave();
+});
+
+// ── Events ────────────────────────────────────────────────
+let _evOff=0;const _evLimit=50;
+async function loadEvents(offset){
+  _evOff=offset||0;
+  const t=$('ev-type').value;
+  const params={limit:_evLimit,offset:_evOff};
+  if(t)params.type=t;
+  $('evtb').innerHTML=load();
+  try{
+    const d=await api('/api/events',params);
+    renderEvents(d);
+  }catch(e){$('evtb').innerHTML=`<tr><td colspan="4" class="empty">Ошибка загрузки</td></tr>`;console.error(e);}
+}
+
+function renderEvents(d){
+  $('ev-count').textContent='Всего: '+(d.total||0);
+  $('evtb').innerHTML=!d.events?.length
+    ?`<tr><td colspan="4" class="empty">Нет событий</td></tr>`
+    :d.events.map(e=>{
+      const pl=e.payload&&typeof e.payload==='object'?JSON.stringify(e.payload):(e.payload||'—');
+      const short=pl.length>90?pl.slice(0,90)+'…':pl;
+      return`<tr>
+        <td style="color:var(--muted);font-size:12px;white-space:nowrap;">${fmtDt(e.created_at)}</td>
+        <td>${evBadge(e.event_type)}</td>
+        <td style="color:var(--muted);font-size:12px;">${e.chat_type||'—'}</td>
+        <td class="mono cell-clip" style="max-width:300px;" title="${pl.replace(/"/g,'&quot;')}">${short}</td>
+      </tr>`;}).join('');
+
+  const total=d.total||0;
+  const evpag=$('evpag');
+  if(total>_evLimit){
+    evpag.style.display='flex';
+    $('evpi').textContent=`${_evOff+1}–${Math.min(_evOff+_evLimit,total)} из ${total}`;
+    const btns=$('evpb');btns.innerHTML='';
+    const addB=(lbl,off,dis)=>{const b=document.createElement('button');b.className='pb';b.textContent=lbl;b.disabled=dis;b.onclick=()=>loadEvents(off);btns.appendChild(b);};
+    addB('‹ Пред',_evOff-_evLimit,_evOff<=0);
+    addB('След ›',_evOff+_evLimit,_evOff+_evLimit>=total);
+  }else{evpag.style.display='none';}
+}
+
+// ── Load / Security ───────────────────────────────────────
+async function loadLoad(){
+  $('load-alerts').innerHTML='<div class="empty"><span class="sp"></span>Загрузка…</div>';
+  $('load-sg').innerHTML='';
+  $('load-errtb').innerHTML=load();
+  try{
+    const d=await api('/api/load');
+    renderAlerts(d.alerts||[]);
+    renderLoadCards(d.summary||{});
+    renderHourlyChart(d.hourly||[]);
+    renderFloodChart(d.flood_windows||[]);
+    renderLoadErrors(d.top_errors||[]);
+  }catch(e){
+    $('load-alerts').innerHTML='<div class="alert alert-critical"><span class="alert-icon">✕</span><div><div class="alert-title">Ошибка загрузки</div><div class="alert-detail">'+e.message+'</div></div></div>';
     console.error(e);
   }
 }
 
-function renderDecks(data) {
-  const tbody = $('deck-tbody');
-  const pagination = $('deck-pagination');
-
-  if (!data.items || data.items.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="5" class="empty">Колоды не найдены</td></tr>`;
-    pagination.style.display = 'none';
-    return;
-  }
-
-  const offset = (data.page - 1) * data.per_page;
-  tbody.innerHTML = data.items.map((d, i) => `
-    <tr>
-      <td style="color:var(--muted);font-size:12px;">${offset + i + 1}</td>
-      <td class="deck-code-cell mono" title="${d.deck_code}">${d.deck_code}</td>
-      <td>${modeBadge(d.mode)}</td>
-      <td style="font-weight:600;">${fmtDust(d.dust_cost)}</td>
-      <td style="color:var(--muted);font-size:12px;">${fmtDate(d.created_at)}</td>
-    </tr>
-  `).join('');
-
-  // pagination
-  pagination.style.display = 'flex';
-  $('deck-page-info').textContent = `Страница ${data.page} из ${data.pages} · ${data.total} записей`;
-
-  const btns = $('deck-page-btns');
-  btns.innerHTML = '';
-  const addBtn = (label, page, active, disabled) => {
-    const b = document.createElement('button');
-    b.className = 'page-btn' + (active ? ' current' : '');
-    b.textContent = label;
-    b.disabled = disabled;
-    b.onclick = () => loadDecks(page);
-    btns.appendChild(b);
-  };
-
-  addBtn('‹ Пред', data.page - 1, false, data.page <= 1);
-
-  const start = Math.max(1, data.page - 2);
-  const end   = Math.min(data.pages, start + 4);
-  for (let p = start; p <= end; p++) {
-    addBtn(p, p, p === data.page, false);
-  }
-
-  addBtn('След ›', data.page + 1, false, data.page >= data.pages);
+const ALERT_ICONS={ok:'✓',warning:'⚠',critical:'⛔'};
+function renderAlerts(alerts){
+  $('load-alerts').innerHTML=alerts.map(a=>`
+    <div class="alert alert-${a.level}">
+      <span class="alert-icon">${ALERT_ICONS[a.level]||'●'}</span>
+      <div>
+        <div class="alert-title">${a.title}</div>
+        <div class="alert-detail">${a.detail}</div>
+      </div>
+    </div>`).join('');
 }
 
-// ── Votes ─────────────────────────────────────────────────
-async function loadVotes() {
-  try {
-    const data = await apiFetch('/admin/stats');
-    const top = data.top_voted || [];
-    const tbody = $('votes-tbody');
+function renderLoadCards(s){
+  const rate1h=s.error_rate_1h||0;
+  const rate24=s.error_rate_24h||0;
+  const cards=[
+    {lbl:'Событий / час',  val:s.last_hour_events??'—', sub:'последние 60 мин',   cls:''},
+    {lbl:'Ошибок / час',   val:s.last_hour_errors??'—', sub:'последние 60 мин',   cls: s.last_hour_errors>10?'r':''},
+    {lbl:'% ошибок (1ч)', val:rate1h+'%',              sub:'от всех событий',     cls: rate1h>=20?'r':rate1h>=10?'a':'g'},
+    {lbl:'Событий / 24ч', val:s.last_24h_events??'—', sub:'за сутки',            cls:''},
+    {lbl:'Ошибок / 24ч',  val:s.last_24h_errors??'—', sub:'за сутки',            cls: s.last_24h_errors>50?'r':''},
+    {lbl:'% ошибок (24ч)',val:rate24+'%',              sub:'от всех событий',     cls: rate24>=15?'r':rate24>=8?'a':'g'},
+    {lbl:'Пик окна 5 мин',val:s.max_5min_window??'—', sub:'событий за 5 мин',    cls: s.max_5min_window>80?'r':s.max_5min_window>40?'a':''},
+  ];
+  $('load-sg').innerHTML=cards.map(c=>`
+    <div class="sc ${c.cls}">
+      <div class="lbl">${c.lbl}</div>
+      <div class="val">${c.val}</div>
+      <div class="sub">${c.sub}</div>
+    </div>`).join('');
+}
 
-    if (!top.length) {
-      tbody.innerHTML = `<tr><td colspan="5" class="empty">Нет данных о голосах</td></tr>`;
+function renderHourlyChart(hourly){
+  mkChart('ch-hourly',{type:'bar',data:{
+    labels:hourly.map(h=>h.hour),
+    datasets:[
+      {label:'Успешно',data:hourly.map(h=>h.ok),
+        backgroundColor:'#6b7280',borderRadius:2,stack:'s'},
+      {label:'Ошибки',data:hourly.map(h=>h.errors),
+        backgroundColor:'#ef4444',borderRadius:2,stack:'s'},
+    ]
+  },options:{responsive:true,maintainAspectRatio:false,
+    plugins:{legend:{position:'top',labels:{color:'#8b8d98',font:{size:11},boxWidth:10}}},
+    scales:{
+      y:{beginAtZero:true,stacked:true,grid:{color:'#2a2d3a'},ticks:{color:'#8b8d98',precision:0}},
+      x:{stacked:true,grid:{display:false},ticks:{color:'#8b8d98',maxRotation:0,font:{size:9}}}
+    }}});
+}
+
+function renderFloodChart(windows){
+  if(!windows.length){$('flood-chart').innerHTML='<div class="empty" style="padding:12px;">Нет данных</div>';return;}
+  const maxVal=Math.max(...windows.map(w=>w.total),1);
+  const bars=windows.map(w=>{
+    const pct=Math.round(100*w.total/maxVal);
+    const errPct=w.total?Math.round(100*w.errors/w.total):0;
+    const okH=Math.round(pct*(1-errPct/100));
+    const errH=Math.round(pct*errPct/100);
+    const label=w.window.replace(/^\d{4}-\d{2}-\d{2} /,'');
+    return`<div class="flood-bar" title="${label}: ${w.total} событий, ${w.errors} ошибок" style="height:${pct}%;">
+      <div class="fl-ok" style="height:${okH}%;"></div>
+      <div class="fl-err" style="height:${errH}%;top:0;"></div>
+    </div>`;
+  }).join('');
+  $('flood-chart').innerHTML=`<div class="flood-grid">${bars}</div>
+    <div style="font-size:10px;color:var(--muted);margin-top:4px;">
+      ${windows[0]?.window?.replace(/^\d{4}-\d{2}-\d{2} /,'')||''} ← → ${windows[windows.length-1]?.window?.replace(/^\d{4}-\d{2}-\d{2} /,'')||''}
+    </div>`;
+}
+
+function renderLoadErrors(errs){
+  $('load-errtb').innerHTML=!errs.length
+    ?`<tr><td colspan="4" class="empty">Ошибок нет</td></tr>`
+    :errs.map(e=>{
+      const bar=Math.min(100,Math.round(e.count/errs[0].count*100));
+      return`<tr>
+        <td>
+          <div style="font-size:13px;margin-bottom:4px;">${e.message}</div>
+          <div style="height:4px;background:var(--border);border-radius:2px;overflow:hidden;">
+            <div style="height:100%;width:${bar}%;background:#ef4444;border-radius:2px;"></div>
+          </div>
+        </td>
+        <td><span class="badge ba" style="font-size:11px;">${e.context}</span></td>
+        <td><strong style="color:var(--red);">${e.count}</strong></td>
+        <td style="color:var(--muted);font-size:12px;">${fmtDt(e.last_seen)}</td>
+      </tr>`;}).join('');
+}
+
+// ── Errors ────────────────────────────────────────────────
+let _errOff=0;const _errLimit=50;
+async function loadErrors(offset){
+  _errOff=offset||0;
+  const params={limit:_errLimit,offset:_errOff,type:'error'};
+  $('errtb').innerHTML=load();
+  try{
+    const d=await api('/api/events',params);
+    renderErrors(d);
+  }catch(e){$('errtb').innerHTML=`<tr><td colspan="4" class="empty">Ошибка загрузки</td></tr>`;console.error(e);}
+}
+
+function renderErrors(d){
+  $('err-count').textContent='Всего ошибок: '+(d.total||0);
+  $('errtb').innerHTML=!d.events?.length
+    ?`<tr><td colspan="4" class="empty">Ошибок нет</td></tr>`
+    :d.events.map(e=>{
+      let ctx='—',msg='—';
+      if(e.payload){
+        const pl=typeof e.payload==='object'?e.payload:JSON.parse(e.payload||'{}');
+        ctx=pl.context||pl.cmd||pl.type||'—';
+        msg=pl.error||pl.message||pl.detail||JSON.stringify(pl);
+      }
+      return`<tr>
+        <td style="color:var(--muted);font-size:12px;white-space:nowrap;">${fmtDt(e.created_at)}</td>
+        <td><span class="badge bn" style="font-size:11px;">${e.chat_type||'—'}</span></td>
+        <td><span class="badge ba" style="font-size:11px;">${ctx}</span></td>
+        <td class="mono" style="color:var(--red);font-size:12px;word-break:break-word;">${msg}</td>
+      </tr>`;}).join('');
+
+  const total=d.total||0;
+  const pag=$('errpag');
+  if(total>_errLimit){
+    pag.style.display='flex';
+    $('errpi').textContent=`${_errOff+1}–${Math.min(_errOff+_errLimit,total)} из ${total}`;
+    const btns=$('errpb');btns.innerHTML='';
+    const addB=(lbl,off,dis)=>{const b=document.createElement('button');b.className='pb';b.textContent=lbl;b.disabled=dis;b.onclick=()=>loadErrors(off);btns.appendChild(b);};
+    addB('‹ Пред',_errOff-_errLimit,_errOff<=0);
+    addB('След ›',_errOff+_errLimit,_errOff+_errLimit>=total);
+  }else{pag.style.display='none';}
+}
+
+// ── HSGuru ────────────────────────────────────────────────
+let _hsLoaded=false;
+async function loadHsguru(force){
+  const fmt=$('hs-format').value||'1';
+  $('hs-status').innerHTML='<span class="sp"></span>Загрузка данных с hsguru.com…';
+  $('hstb').innerHTML=load();
+  try{
+    const d=await api('/api/hsguru',{format:fmt});
+    if(!d.ok){
+      $('hstb').innerHTML=`<tr><td colspan="7" class="empty">Ошибка: ${d.error||'неизвестно'}</td></tr>`;
+      $('hs-status').textContent='⚠ Ошибка загрузки';
       return;
     }
-
-    tbody.innerHTML = top.map((v, i) => {
-      const total = (v.likes || 0) + (v.dislikes || 0);
-      const pct = total ? Math.round((v.likes / total) * 100) : 0;
-      const bar = `
-        <div class="vote-bar">
-          <span class="vote-like">▲ ${v.likes}</span>
-          <span class="vote-dislike">▼ ${v.dislikes}</span>
-          <div style="flex:1;background:var(--border);border-radius:4px;height:6px;overflow:hidden;">
-            <div style="width:${pct}%;background:var(--green);height:100%;"></div>
-          </div>
-          <span style="font-size:11px;color:var(--muted);">${pct}%</span>
-        </div>`;
-      return `<tr>
-        <td style="font-weight:700;color:var(--muted);">#${i+1}</td>
-        <td class="mono">${v.message_id}</td>
-        <td style="color:var(--green);font-weight:700;">▲ ${v.likes}</td>
-        <td style="color:var(--red);font-weight:700;">▼ ${v.dislikes}</td>
-        <td style="min-width:200px;">${bar}</td>
-      </tr>`;
-    }).join('');
-  } catch(e) {
-    $('votes-tbody').innerHTML = `<tr><td colspan="5" class="empty">Ошибка загрузки</td></tr>`;
-    console.error(e);
+    $('hs-status').textContent=`${d.data.length} архетипов · формат: ${fmt==='1'?'Стандарт':'Вольный'}`;
+    renderHsguru(d.data);
+  }catch(e){
+    $('hstb').innerHTML=`<tr><td colspan="7" class="empty">Ошибка загрузки</td></tr>`;
+    $('hs-status').textContent='⚠ Ошибка';console.error(e);
   }
 }
 
-// ── Schema ─────────────────────────────────────────────────
-async function loadSchema() {
-  try {
-    const tables = await apiFetch('/admin/schema');
-    const grid = $('schema-grid');
+function hsForceReload(){_loaded['hsguru']=false;loadHsguru(true);}
 
-    if (!tables.length) {
-      grid.innerHTML = '<div class="empty">Таблицы не найдены</div>';
-      return;
-    }
-
-    grid.innerHTML = tables.map(t => {
-      const cols = t.columns.map(c => `
-        <div class="schema-col">
-          <span class="col-name">
-            ${c.pk ? '<span class="col-pk">PK</span>' : ''}
-            ${c.name}
-            ${c.notnull && !c.pk ? '<span class="col-nn">NN</span>' : ''}
-          </span>
-          <span class="col-type">${c.type || 'ANY'}</span>
-        </div>
-      `).join('');
-
-      return `
-        <div class="schema-table">
-          <div class="schema-table-header">
-            <span class="tname">${t.table}</span>
-            <span class="trows">${t.row_count.toLocaleString('ru-RU')} строк</span>
-          </div>
-          ${cols}
-        </div>
-      `;
-    }).join('');
-  } catch(e) {
-    $('schema-grid').innerHTML = '<div class="empty">Ошибка загрузки схемы</div>';
-    console.error(e);
-  }
+function wrBar(wr){
+  const m=wr&&wr.match(/([\d.]+)/);
+  if(!m)return'';
+  const pct=Math.min(100,parseFloat(m[1]));
+  const col=pct>=55?'#22c55e':pct>=50?'#f59e0b':'#ef4444';
+  return`<span class="wr-bar"><span class="wr-fill" style="width:${pct}%;background:${col};"></span></span>`;
 }
 
-// ── Streamer Decks ─────────────────────────────────────────
-let _sdAllDecks = [];
-let _sdFilter = 'all';
-
-async function loadStreamerDecks(force) {
-  $('sd-tbody').innerHTML = `<tr><td colspan="6" class="empty"><span class="spinner"></span>Загрузка данных с HSGuru…${force ? ' (принудительное обновление, до 10 сек)' : ' (из кэша или до 10 сек)'}</td></tr>`;
-  $('sd-summary').innerHTML = '';
-  try {
-    _sdAllDecks = await apiFetch('/admin/streamer-decks' + (force ? '?refresh=true' : ''));
-    sdRender();
-  } catch(e) {
-    $('sd-tbody').innerHTML = `<tr><td colspan="6" class="empty">Ошибка загрузки данных</td></tr>`;
-    console.error(e);
-  }
-}
-
-function sdSetFilter(f, el) {
-  _sdFilter = f;
-  document.querySelectorAll('.filter-tab').forEach(t => t.classList.remove('active'));
-  el.classList.add('active');
-  sdRender();
-}
-
-function sdRender() {
-  const search = ($('sd-search').value || '').toLowerCase().trim();
-  const tbody  = $('sd-tbody');
-
-  let decks = _sdAllDecks;
-
-  if (_sdFilter !== 'all') {
-    decks = decks.filter(d => d.status === _sdFilter);
-  }
-
-  if (search) {
-    decks = decks.filter(d =>
-      (d.deck_name || '').toLowerCase().includes(search) ||
-      (d.streamer  || '').toLowerCase().includes(search)
-    );
-  }
-
-  const total    = _sdAllDecks.length;
-  const approved = _sdAllDecks.filter(d => d.status === 'approved').length;
-  const pending  = _sdAllDecks.filter(d => d.status === 'pending').length;
-  const rejected = _sdAllDecks.filter(d => d.status === 'rejected').length;
-  $('sd-summary').innerHTML = `
-    <div class="s-item"><span class="s-dot"></span><b>${total}</b>&nbsp;всего</div>
-    <div class="s-item"><span class="s-dot green"></span><b>${approved}</b>&nbsp;опубликовано</div>
-    <div class="s-item"><span class="s-dot amber"></span><b>${pending}</b>&nbsp;ожидает</div>
-    <div class="s-item"><span class="s-dot red"></span><b>${rejected}</b>&nbsp;отклонено</div>
-  `;
-
-  if (!decks.length) {
-    tbody.innerHTML = `<tr><td colspan="6" class="empty">Ничего не найдено</td></tr>`;
-    return;
-  }
-
-  tbody.innerHTML = decks.map((d, i) => {
-    let statusHtml;
-    if (d.status === 'approved') {
-      statusHtml = `<span class="status-approved">✅ Опубликовано</span>`;
-    } else if (d.status === 'pending') {
-      statusHtml = `<span class="status-pending">⏳ Ожидает</span>`;
-    } else {
-      statusHtml = `<span class="status-rejected">❌ Отклонено</span>`;
-    }
-
-    let reasonHtml = '—';
-    if (d.status === 'approved' && d.published_at) {
-      reasonHtml = `<span style="color:var(--muted);font-size:12px;">📅 ${fmtDate(d.published_at)}</span>`;
-    } else if (d.status === 'rejected' && d.rejection_reason) {
-      reasonHtml = `<span class="reason-pill" title="${d.rejection_reason}">${d.rejection_reason}</span>`;
-    }
-
-    const wr = d.total_games > 0
-      ? `<span style="font-size:11px;color:${d.wins / d.total_games >= 0.5 ? 'var(--green)' : 'var(--red)'}">
-           ${(d.wins / d.total_games * 100).toFixed(0)}%
-         </span>`
-      : '';
-    const statsHtml = `<span class="sd-stats">${d.total_games}&nbsp;игр&nbsp;${d.wins}–${d.losses}&nbsp;${wr}</span>`;
-
-    return `<tr>
-      <td style="color:var(--muted);font-size:12px;">${i + 1}</td>
-      <td>
-        <div class="sd-name">${d.deck_name || '—'}</div>
-        <div class="sd-streamer">${d.streamer || ''}</div>
-      </td>
-      <td>${modeBadge(d.deck_mode || d.format)}</td>
-      <td>${statsHtml}</td>
-      <td>${statusHtml}</td>
-      <td>${reasonHtml}</td>
+function renderHsguru(data){
+  if(!data.length){$('hstb').innerHTML=`<tr><td colspan="7" class="empty">Нет данных</td></tr>`;return;}
+  $('hstb').innerHTML=data.map((r,i)=>{
+    const code=r.deck_code||'';
+    const codeCell=code
+      ?`<div class="deck-code-cell">
+          <span class="mono cell-clip" style="max-width:150px;font-size:11px;" title="${code}">${code}</span>
+          <button class="copy-btn" title="Скопировать" onclick="copyCode('${code.replace(/'/g,"\\'")}',this)">⎘</button>
+        </div>`
+      :`<span style="color:var(--muted);font-size:11px;">—</span>`;
+    return`<tr>
+      <td style="color:var(--muted);font-size:12px;">${i+1}</td>
+      <td style="font-weight:600;">${r.name_ru||r.name_en}</td>
+      <td>${classBadge(r.ru_class)}</td>
+      <td><span style="font-weight:600;">${r.winrate||'—'}</span>${wrBar(r.winrate)}</td>
+      <td style="color:var(--muted);">${r.game_count?Number(r.game_count).toLocaleString('ru-RU'):'—'}</td>
+      <td><span class="pop-badge">${r.popularity||'—'}</span></td>
+      <td>${codeCell}</td>
     </tr>`;
   }).join('');
 }
 
-// ── Init ──────────────────────────────────────────────────
-applyTheme(document.documentElement.getAttribute('data-theme') || 'light');
-_pageLoaded['overview'] = true;
-loadOverview();
-
-// Поиск: Enter — мгновенный, ввод — с debounce 350ms.
-const _deckSearchDebounced = debounce(() => loadDecks(1), 350);
-$('deck-search').addEventListener('keydown', e => {
-  if (e.key === 'Enter') { e.preventDefault(); loadDecks(1); }
-});
-$('deck-search').addEventListener('input', _deckSearchDebounced);
-$('deck-mode-filter').addEventListener('change', () => loadDecks(1));
-$('deck-sort').addEventListener('change', () => loadDecks(1));
-
-// Streamer-decks search: debounce 250ms (sdRender — клиентский фильтр).
-const _sdSearchEl = $('sd-search');
-if (_sdSearchEl) {
-  const _sdDebounced = debounce(() => sdRender(), 250);
-  _sdSearchEl.removeAttribute('oninput');
-  _sdSearchEl.addEventListener('input', _sdDebounced);
+// ── Publish Logs ─────────────────────────────────────
+let _plOff=0;const _plLimit=50;
+async function loadPubLogs(offset){
+  _plOff=offset||0;
+  $('pltb').innerHTML=load();
+  try{
+    const d=await api('/api/publish-logs',{limit:_plLimit,offset:_plOff});
+    renderPubLogs(d);
+  }catch(e){$('pltb').innerHTML=`<tr><td colspan="8" class="empty">Ошибка загрузки</td></tr>`;console.error(e);}
 }
 
-// Закрывать мобильное меню при выборе пункта.
-document.querySelectorAll('.nav-item').forEach(n => {
-  n.addEventListener('click', () => {
-    if (window.innerWidth <= 800) toggleSidebar(false);
-  });
-});
+function renderPubLogs(d){
+  $('pl-count').textContent='Всего: '+(d.total||0);
+  $('pltb').innerHTML=!d.logs?.length
+    ?`<tr><td colspan="8" class="empty">Публикаций ещё не было</td></tr>`
+    :d.logs.map(r=>{
+      const tgBadge=r.telegram_sent
+        ?`<span class="badge bg">✓ Отправлено</span>`
+        :`<span class="badge br">✗ Нет</span>`;
+      const wpBadge=r.wordpress_posted
+        ?`<span class="badge bg">✓ Опубликовано</span>`
+        :`<span class="badge br">✗ Нет</span>`;
+      const errCell=r.error
+        ?`<span style="color:var(--red);font-size:11px;">${r.error.slice(0,80)}</span>`
+        :`<span style="color:var(--muted);">—</span>`;
+      const code=r.deck_code||'';
+      const codeCell=code
+        ?`<div class="deck-code-cell"><span class="mono cell-clip" style="max-width:130px;font-size:11px;" title="${code}">${code}</span><button class="copy-btn" onclick="copyCode('${code.replace(/'/g,"\\'")}',this)">⎘</button></div>`
+        :`<span style="color:var(--muted);">—</span>`;
+      return`<tr>
+        <td style="color:var(--muted);font-size:12px;white-space:nowrap;">${fmtDt(r.created_at)}</td>
+        <td style="font-weight:600;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${r.deck_name||'<span style="color:var(--muted)">—</span>'}</td>
+        <td>${classBadge(r.deck_class)}</td>
+        <td>${modeBadge(r.deck_mode)}</td>
+        <td>${tgBadge}</td>
+        <td>${wpBadge}</td>
+        <td>${errCell}</td>
+        <td>${codeCell}</td>
+      </tr>`;
+    }).join('');
+  const total=d.total||0;
+  const pag=$('plpag');
+  if(total>_plLimit){
+    pag.style.display='flex';
+    $('plpi').textContent=`${_plOff+1}–${Math.min(_plOff+_plLimit,total)} из ${total}`;
+    const btns=$('plpb');btns.innerHTML='';
+    const addB=(lbl,off,dis)=>{const b=document.createElement('button');b.className='pb';b.textContent=lbl;b.disabled=dis;b.onclick=()=>loadPubLogs(off);btns.appendChild(b);};
+    addB('‹ Пред',_plOff-_plLimit,_plOff<=0);
+    addB('След ›',_plOff+_plLimit,_plOff+_plLimit>=total);
+  }else{pag.style.display='none';}
+}
 
-// Горячие клавиши: r — обновить, t — тема, / — фокус на поиск.
-document.addEventListener('keydown', e => {
-  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
-  if (e.key === 'r') { e.preventDefault(); refreshCurrent(); }
-  else if (e.key === 't') { e.preventDefault(); toggleTheme(); }
-  else if (e.key === '/') {
-    if (_currentPage === 'decks')          { e.preventDefault(); $('deck-search').focus(); }
-    else if (_currentPage === 'streamer-decks') { e.preventDefault(); $('sd-search').focus(); }
+// ── Arena ─────────────────────────────────────────────
+let _arenaView='tier';
+function setArenaView(view){
+  _arenaView=view;
+  loadArena();
+}
+async function loadArena(){
+  if($('arena-tier-btn'))$('arena-tier-btn').style.background=_arenaView==='tier'?'var(--lt)':'';
+  if($('arena-matrix-btn'))$('arena-matrix-btn').style.background=_arenaView==='matrix'?'var(--lt)':'';
+  $('arena-status').innerHTML='<span class="sp"></span>Загрузка…';
+  $('arenatb').innerHTML=load();
+  try{
+    const d=await api('/api/arena',{view:_arenaView});
+    if(!d.ok){
+      $('arenatb').innerHTML=`<tr><td colspan="5" class="empty">Ошибка: ${d.error||'неизвестно'}</td></tr>`;
+      $('arena-status').textContent='⚠ Ошибка';return;
+    }
+    if(_arenaView==='matrix'){
+      const classes=d.classes||[];
+      $('arenahead').innerHTML=`<tr><th>Осн. \\ Втор.</th>${classes.map(c=>`<th title="${c.class_ru}">${c.code}</th>`).join('')}</tr>`;
+      $('arena-status').textContent=`${d.period_label} · HSReplay · двухклассовый винрейт`;
+      $('arenatb').innerHTML=!d.rows?.length
+        ?`<tr><td colspan="${classes.length+1}" class="empty">Нет данных</td></tr>`
+        :d.rows.map(r=>`<tr>
+          <td style="font-weight:700;" title="${r.class_ru}">${r.code}</td>
+          ${r.cells.map(c=>{
+            const wr=c.winrate;
+            const col=wr==null?'var(--muted)':wr>=52?'var(--green)':wr>=48?'var(--amber)':'var(--red)';
+            return`<td title="${r.class_ru} + ${c.class_ru}" style="font-weight:700;color:${col};">${wr==null?'—':wr.toFixed(1)+'%'}</td>`;
+          }).join('')}
+        </tr>`).join('');
+      return;
+    }
+
+    $('arenahead').innerHTML='<tr><th>#</th><th>Класс</th><th>Винрейт</th><th>Прогресс</th><th>Ранов</th></tr>';
+    const total=(d.total_games||0).toLocaleString('ru-RU');
+    $('arena-status').textContent=`${d.period_label} · ${total} ранов · обновляется раз в час`;
+    const medals={1:'🥇',2:'🥈',3:'🥉'};
+    $('arenatb').innerHTML=!d.rows?.length
+      ?`<tr><td colspan="5" class="empty">Нет данных</td></tr>`
+      :d.rows.map(r=>{
+        const wr=r.winrate;
+        const col=wr>=60?'var(--green)':wr>=50?'var(--amber)':'var(--red)';
+        const pct=Math.round(Math.max(0,Math.min(100,(wr-40)/30*100)));
+        const bar=`<div style="display:flex;align-items:center;gap:6px;">
+          <div style="width:80px;height:6px;background:var(--border);border-radius:3px;overflow:hidden;">
+            <div style="height:100%;width:${pct}%;background:${col};border-radius:3px;"></div>
+          </div>
+        </div>`;
+        const rank=medals[r.rank]||(r.rank+'.');
+        return`<tr>
+          <td style="font-size:15px;">${rank}</td>
+          <td style="font-weight:600;">${r.class_ru}</td>
+          <td><span style="font-weight:700;color:${col};font-size:14px;">${wr}%</span></td>
+          <td>${bar}</td>
+          <td style="color:var(--muted);">${(r.games||0).toLocaleString('ru-RU')}</td>
+        </tr>`;
+      }).join('');
+  }catch(e){
+    $('arenatb').innerHTML=`<tr><td colspan="5" class="empty">Ошибка загрузки</td></tr>`;
+    $('arena-status').textContent='⚠ Ошибка';console.error(e);
   }
-});
+}
+
+// ── BGS Comps ─────────────────────────────────────────
+const TRIBE_COLORS={quilboar:'#F59E0B',elemental:'#3B82F6',murloc:'#06B6D4',
+  dragon:'#8B5CF6',mech:'#6B7280',naga:'#10B981',pirate:'#EF4444',
+  undead:'#9CA3AF',demon:'#7C3AED',beast:'#84CC16',general:'#374151'};
+
+async function loadComps(){
+  const period=$('comps-period').value||'last-patch';
+  $('comps-status').innerHTML='<span class="sp"></span>Загрузка…';
+  $('compstb').innerHTML=load();
+  try{
+    const d=await api('/api/comps',{period});
+    if(!d.ok){
+      $('compstb').innerHTML=`<tr><td colspan="7" class="empty">Ошибка: ${d.error||'неизвестно'}</td></tr>`;
+      $('comps-status').textContent='⚠ Ошибка';return;
+    }
+    const total=(d.total_games||0).toLocaleString('ru-RU');
+    $('comps-status').textContent=`${d.period_label} · ${total} партий · обновляется раз в час`;
+    const medals={1:'🥇',2:'🥈',3:'🥉'};
+    $('compstb').innerHTML=!d.rows?.length
+      ?`<tr><td colspan="7" class="empty">Нет данных</td></tr>`
+      :d.rows.map(r=>{
+        const avg=r.avg_placement;
+        const col=avg<=3?'var(--green)':avg<=5?'var(--amber)':'var(--red)';
+        const pct=Math.round(Math.max(0,Math.min(100,(7-avg)/6*100)));
+        const bar=`<div style="width:80px;height:6px;background:var(--border);border-radius:3px;overflow:hidden;">
+          <div style="height:100%;width:${pct}%;background:${col};border-radius:3px;"></div>
+        </div>`;
+        const tribeColor=TRIBE_COLORS[r.tribe]||'#374151';
+        const tribeBadge=`<span class="badge" style="background:${tribeColor}22;color:${tribeColor};border:1px solid ${tribeColor}44;">${r.tribe}</span>`;
+        const top4=r.top4_pct!=null?`<span style="font-weight:600;color:var(--green);">${r.top4_pct}%</span>`:'—';
+        const rank=medals[r.rank]||(r.rank+'.');
+        return`<tr>
+          <td style="font-size:15px;">${rank}</td>
+          <td style="font-weight:600;">${r.display_name}</td>
+          <td>${tribeBadge}</td>
+          <td><span style="font-weight:700;color:${col};font-size:14px;">${avg}</span></td>
+          <td>${bar}</td>
+          <td>${top4}</td>
+          <td style="color:var(--muted);">${(r.games||0).toLocaleString('ru-RU')}</td>
+        </tr>`;
+      }).join('');
+  }catch(e){
+    $('compstb').innerHTML=`<tr><td colspan="7" class="empty">Ошибка загрузки</td></tr>`;
+    $('comps-status').textContent='⚠ Ошибка';console.error(e);
+  }
+}
+
+// ── Archetypes ────────────────────────────────────────────
+let _archItems=[];
+let _archEditId=null;
+let _archDeleteId=null;
+
+async function loadArchetypes(){
+  $('arch-tb').innerHTML=load();
+  try{
+    const d=await api('/api/archetypes',{sort_by:'name_en',sort_dir:'asc'});
+    _archItems=d.items||[];
+    renderArchetypes();
+  }catch(e){$('arch-tb').innerHTML=`<tr><td colspan="4" class="empty">Ошибка загрузки</td></tr>`;console.error(e);}
+}
+
+function renderArchetypes(){
+  let items=_archItems;
+  const q=($('arch-search').value||'').trim().toLowerCase();
+  if(q) items=items.filter(a=>a.name_en.toLowerCase().includes(q)||a.name_ru.toLowerCase().includes(q));
+  $('arch-count').textContent=items.length+' шт.';
+  if(!items.length){$('arch-tb').innerHTML=`<tr><td colspan="4" class="empty">Нет архетипов</td></tr>`;return;}
+  $('arch-tb').innerHTML=items.map((a,i)=>{
+    const en=a.name_en.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const ru=a.name_ru.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    return`<tr>
+      <td style="color:var(--muted);font-size:12px;">${i+1}</td>
+      <td>${en}</td>
+      <td>${ru}</td>
+      <td>
+        <div style="display:flex;gap:4px;white-space:nowrap;">
+          <button class="btn btn-sm" onclick="archStartEdit(${a.id})">✎ Правка</button>
+          <button class="btn btn-sm btn-red" onclick="archStartDelete(${a.id})">✕ Удалить</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function archSearch(){renderArchetypes();}
+
+function archOpenAdd(){
+  _archEditId=null;
+  $('arch-modal-title').textContent='Добавить архетип';
+  $('arch-name-en').value='';
+  $('arch-name-ru').value='';
+  $('arch-modal').classList.add('open');
+  $('arch-name-en').focus();
+}
+
+function archCloseModal(){$('arch-modal').classList.remove('open');}
+
+function archStartEdit(id){
+  const item=_archItems.find(a=>a.id===id);
+  if(!item)return;
+  _archEditId=id;
+  $('arch-modal-title').textContent='Редактировать архетип';
+  $('arch-name-en').value=item.name_en;
+  $('arch-name-ru').value=item.name_ru;
+  $('arch-modal').classList.add('open');
+  $('arch-name-en').focus();
+}
+
+async function archSave(){
+  const name_en=$('arch-name-en').value.trim();
+  const name_ru=$('arch-name-ru').value.trim();
+  if(!name_en||!name_ru){toast('Заполните оба поля');return;}
+  try{
+    let r;
+    if(_archEditId){
+      r=await fetch(BASE+'/api/archetypes/'+_archEditId,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({name_en,name_ru})});
+    }else{
+      r=await fetch(BASE+'/api/archetypes',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name_en,name_ru})});
+    }
+    const d=await r.json();
+    if(!r.ok){toast(d.error||'Ошибка');return;}
+    toast(_archEditId?'Обновлено':'Добавлено');
+    archCloseModal();
+    loadArchetypes();
+  }catch(e){toast('Ошибка: '+e.message);}
+}
+
+function archStartDelete(id){
+  const item=_archItems.find(a=>a.id===id);
+  if(!item)return;
+  _archDeleteId=id;
+  $('arch-del-msg').textContent='Удалить "'+item.name_en+'" → "'+item.name_ru+'"?';
+  $('arch-del-modal').classList.add('open');
+}
+
+function archCloseDelModal(){$('arch-del-modal').classList.remove('open');_archDeleteId=null;}
+
+async function archConfirmDelete(){
+  if(!_archDeleteId)return;
+  try{
+    const r=await fetch(BASE+'/api/archetypes/'+_archDeleteId,{method:'DELETE'});
+    const d=await r.json();
+    if(!r.ok){toast(d.error||'Ошибка');return;}
+    toast('Удалено');
+    archCloseDelModal();
+    loadArchetypes();
+  }catch(e){toast('Ошибка: '+e.message);}
+}
+
+async function archImport(){
+  if(!confirm('Импортировать переводы из Google Таблицы? Существующие записи будут обновлены.'))return;
+  toast('Импорт...');
+  try{
+    const r=await fetch(BASE+'/api/archetypes/import',{method:'POST'});
+    const d=await r.json();
+    if(!r.ok){toast(d.error||'Ошибка импорта');return;}
+    toast('Импорт: +'+d.added+' новых, '+d.updated+' обновлено (всего '+d.total_fetched+' из таблицы)');
+    loadArchetypes();
+  }catch(e){toast('Ошибка: '+e.message);}
+}
+
+// ── Schema ────────────────────────────────────────────────
+async function loadSchema(){
+  try{
+    const tables=await api('/api/schema');
+    $('schema-grid').innerHTML=!tables.length
+      ?'<div class="empty">Таблицы не найдены</div>'
+      :tables.map(t=>`
+        <div class="st">
+          <div class="en-hd"><span>${t.table}</span><span class="ec">${t.row_count.toLocaleString('ru-RU')} строк</span></div>
+          ${t.columns.map(c=>`
+            <div class="ec-row">
+              <span class="ecn">
+                ${c.pk?'<span class="epk">PK</span>':''}
+                ${c.name}
+                ${c.notnull&&!c.pk?'<span class="enn">NN</span>':''}
+              </span>
+              <span class="ect">${c.type||'ANY'}</span>
+            </div>`).join('')}
+        </div>`).join('');
+  }catch(e){$('schema-grid').innerHTML='<div class="empty">Ошибка загрузки</div>';console.error(e);}
+}
+
+// ── Generic pagination ────────────────────────────────────
+function renderPag(pagId,piId,pbId,d,fn){
+  const pag=$(pagId);
+  if(d.pages<=1&&d.total<=d.per_page){pag.style.display='none';return;}
+  pag.style.display='flex';
+  $(piId).textContent=`Страница ${d.page} из ${d.pages} · ${d.total} записей`;
+  const btns=$(pbId);btns.innerHTML='';
+  const addB=(lbl,p,cur,dis)=>{
+    const b=document.createElement('button');
+    b.className='pb'+(cur?' cur':'');
+    b.textContent=lbl;b.disabled=dis;
+    b.onclick=()=>fn(p);btns.appendChild(b);
+  };
+  addB('‹',d.page-1,false,d.page<=1);
+  const s=Math.max(1,d.page-2),e=Math.min(d.pages,s+4);
+  for(let p=s;p<=e;p++)addB(p,p,p===d.page,false);
+  addB('›',d.page+1,false,d.page>=d.pages);
+}
+
+// ── Init ──────────────────────────────────────────────────
+_loaded['overview']=true;
+loadOverview();
+setInterval(()=>{if(_cur==='overview')loadOverview();},60000);
+
+$('d-search').addEventListener('keydown',e=>e.key==='Enter'&&loadDecks(1));
+$('u-search').addEventListener('keydown',e=>e.key==='Enter'&&loadUsers(1));
+$('ev-type').addEventListener('change',()=>loadEvents(0));
 </script>
+<script type="module" src="{{ url_for('static', filename='admin-experience.js') }}?v=20260612-adminfx2"></script>
 </body>
 </html>

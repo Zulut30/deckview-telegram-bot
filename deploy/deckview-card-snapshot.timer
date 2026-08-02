@@ -1,0 +1,12 @@
+[Unit]
+Description=Refresh Deckview card metadata every six hours
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=6h
+RandomizedDelaySec=5min
+Persistent=true
+Unit=deckview-card-snapshot.service
+
+[Install]
+WantedBy=timers.target
