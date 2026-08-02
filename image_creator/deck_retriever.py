@@ -9,7 +9,7 @@ import time
 from collections import OrderedDict
 from pathlib import Path
 
-from config import HSJSON_CARDS_URL, HSJSON_LOCALE
+from deckview.config import HSJSON_CARDS_URL, HSJSON_LOCALE
 from framework.blizzard_api import get_blizzard_api
 from framework.hearthstonejson_api import (
     configure as hsjson_configure,

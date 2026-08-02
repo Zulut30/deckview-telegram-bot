@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from perf_telemetry import emit_render_timing
+from deckview.infrastructure.perf_telemetry import emit_render_timing
 
 
 class PerformanceTelemetryTests(unittest.TestCase):

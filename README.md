@@ -4,7 +4,7 @@
   <p><strong>Telegram-бот и HTTP API для быстрых изображений колод Hearthstone</strong></p>
   <p>
     <a href="https://t.me/manacostcard_bot"><img alt="Telegram" src="https://img.shields.io/badge/Telegram-открыть_бота-229ED9?logo=telegram&logoColor=white"></a>
-    <a href="https://github.com/Zulut30/deckview-telegram-bot/actions/workflows/tests.yml"><img alt="Tests" src="https://github.com/Zulut30/deckview-telegram-bot/actions/workflows/tests.yml/badge.svg"></a>
+    <a href="https://github.com/Zulut30/deckview-telegram-bot/actions/workflows/tests.yml"><img alt="CI" src="https://github.com/Zulut30/deckview-telegram-bot/actions/workflows/tests.yml/badge.svg"></a>
     <img alt="Python" src="https://img.shields.io/badge/Python-3.10+-3776AB?logo=python&logoColor=white">
     <img alt="License" src="https://img.shields.io/badge/license-MIT-green">
   </p>
@@ -75,15 +75,30 @@ make reno
 ## Структура
 
 ```text
+deckview/
+├── bot/             lifecycle, composition root и Telegram utilities
+├── handlers/        aiogram transport adapters
+├── services/        use cases без Telegram-зависимостей
+├── integrations/    Arena, HSGuru, Manacost и внешние API
+├── repositories/    SQLite persistence
+├── workers/         Redis/RQ queue, jobs и warm workers
+├── infrastructure/  render/file_id cache и telemetry
+└── web/             Flask API и dashboard
 image_creator/       декодирование, данные карт и композиция изображения
-framework/           HTTP-клиенты и внешние Hearthstone-источники
-deckview_*           очередь, jobs и worker тяжёлого рендера
-render_cache.py      versioned cache готовых изображений
-web_app.py           Flask API и web-интерфейс
-web_db.py            персистентность настроек и истории
-main.py              Telegram orchestration
-tests (test_*.py)    регрессии бота, API, кешей и рендера
+framework/           общая HTTP/Hearthstone инфраструктура
+main.py, web_app.py  совместимые точки входа без бизнес-логики
+tests/               architecture, integration и render regressions
 ```
+
+Старые import paths сохранены как короткие aliases и указывают на те же объекты
+модулей внутри `deckview/`. Это позволяет обновлять systemd, gunicorn и RQ без
+big-bang миграции. Контракт защищён architecture-тестами и командой
+`python scripts/check_modular_imports.py`.
+
+GitHub Actions компилирует пакет и запускает все тесты для каждого PR. Ручной
+production workflow строит immutable release, проверяет Reno-колоды на 30/40
+карт, атомарно переключает `current` и откатывается при ошибке health-check.
+Подробности — в [руководстве по развёртыванию](docs/DEPLOYMENT.md).
 
 ## Разработка
 

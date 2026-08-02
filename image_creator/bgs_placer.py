@@ -1,6 +1,6 @@
 import os
 from PIL import Image, ImageDraw
-from threader import to_thread
+from deckview.infrastructure.async_tools import to_thread
 from .cards_downloader import download_cards
 
 FOLDER = "cards/"

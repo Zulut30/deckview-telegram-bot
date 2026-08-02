@@ -1,15 +1,17 @@
 import asyncio
 import os
 import sys
+from pathlib import Path
 from dotenv import load_dotenv
 
 # Add the project directory to sys.path
-sys.path.append('/home/ubuntu/Deckview')
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(PROJECT_ROOT))
 
 from framework.blizzard_api import BlizzardAPI
 
 async def check_cards():
-    load_dotenv('/home/ubuntu/Deckview/.env')
+    load_dotenv(PROJECT_ROOT / ".env")
     token = os.getenv("BATTLE_NET_TOKEN")
     api = BlizzardAPI(token, locale="ru_RU")
 

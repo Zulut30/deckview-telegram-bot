@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from render_cache import (
+from deckview.infrastructure.render_cache import (
     build_render_cache_key,
     lookup_render_cache,
     materialize_render_cache,
@@ -115,7 +115,7 @@ class RenderCacheTests(unittest.TestCase):
                 "DECKVIEW_RENDER_CACHE_READ_TELEGRAM": "0",
             },
         ):
-            from render_cache import render_cache_read_enabled
+            from deckview.infrastructure.render_cache import render_cache_read_enabled
 
             self.assertTrue(render_cache_read_enabled("api"))
             self.assertFalse(render_cache_read_enabled("telegram"))

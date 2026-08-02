@@ -3,7 +3,7 @@ import shutil
 
 from db.config import FOLDER
 from framework import GRequestsDownloader
-from threader import to_thread
+from deckview.infrastructure.async_tools import to_thread
 
 
 @to_thread

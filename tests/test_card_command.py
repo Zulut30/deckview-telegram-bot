@@ -7,11 +7,13 @@
 """
 import os
 import sys
+from pathlib import Path
 
 # Рабочая директория — корень проекта (как в main.py)
-os.chdir(os.path.dirname(os.path.abspath(__file__)))
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+os.chdir(PROJECT_ROOT)
 
-from config import HSJSON_CARDS_URL
+from deckview.config import HSJSON_CARDS_URL
 from framework.hearthstonejson_api import configure as hsjson_configure, find_cards_by_query, get_card_by_dbfid
 from image_creator.card_image import build_card_image, get_card_art_image
 

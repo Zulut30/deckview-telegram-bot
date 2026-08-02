@@ -1,10 +1,12 @@
 import sys
 import os
+from pathlib import Path
 
 # Add the project directory to sys.path
-sys.path.append('/home/ubuntu/Deckview')
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(PROJECT_ROOT))
 
-from hsguru_fetch import translate_deck_name
+from deckview.integrations.hsguru_fetch import translate_deck_name
 
 def test_translation():
     archetypes = {

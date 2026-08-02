@@ -7,7 +7,7 @@ import argparse
 import json
 import os
 
-from config import MANACOST_PUBLIC_API_BASE_URL, MANACOST_PUBLIC_API_KEY
+from deckview.config import MANACOST_PUBLIC_API_BASE_URL, MANACOST_PUBLIC_API_KEY
 from image_creator.card_catalog_snapshot import (
     fetch_standard_dbf_ids,
     refresh_snapshot,

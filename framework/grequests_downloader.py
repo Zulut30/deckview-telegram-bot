@@ -381,7 +381,7 @@ def _download_from_arena(card):
     if _use_local_arena_photo(card):
         return True
     try:
-        from manacost_api import get_card_image
+        from deckview.integrations.manacost_api import get_card_image
 
         # Arena's background prewarmer stores canonical images by dbfId.
         # Ask for that identifier first so a CardID alias never triggers a

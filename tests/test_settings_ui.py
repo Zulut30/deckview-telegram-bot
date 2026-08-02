@@ -360,7 +360,7 @@ class BackgroundUploadTests(unittest.TestCase):
     def test_valid_png_is_normalized_and_saved_as_jpeg(self):
         source = BytesIO()
         Image.new("RGB", (640, 480), "#47302a").save(source, format="PNG")
-        project_root = Path(main.__file__).resolve().parent
+        project_root = main.PROJECT_ROOT
         with tempfile.TemporaryDirectory(dir=project_root / "tmp_decks") as directory:
             background_dir = Path(directory)
             with patch.object(main, "_BACKGROUND_DIR", background_dir):
@@ -390,7 +390,7 @@ class BackgroundUploadTests(unittest.TestCase):
             source,
             format="PNG",
         )
-        project_root = Path(main.__file__).resolve().parent
+        project_root = main.PROJECT_ROOT
         with tempfile.TemporaryDirectory(dir=project_root / "tmp_decks") as directory:
             with patch.object(main, "_LOGO_DIR", Path(directory)):
                 relative = main._save_logo_image_sync(
