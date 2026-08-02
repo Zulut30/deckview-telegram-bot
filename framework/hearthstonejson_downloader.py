@@ -26,7 +26,7 @@ def download_from_hearthstonejson(card_id, slug, locale=None):
     if card_id_str.isdigit():
         try:
             from framework.hearthstonejson_api import get_card_by_dbfid
-            from config import HSJSON_CARDS_URL, HSJSON_LOCALE  # root config
+            from deckview.config import HSJSON_CARDS_URL, HSJSON_LOCALE  # root config
             from framework.hearthstonejson_api import configure as hsjson_configure
             hsjson_configure(HSJSON_CARDS_URL, HSJSON_LOCALE)
             deckview_card = get_card_by_dbfid(int(card_id_str))

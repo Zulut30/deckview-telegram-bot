@@ -1,9 +1,11 @@
 import asyncio
 import os
 import sys
+from pathlib import Path
 
 # Add the project directory to sys.path
-sys.path.append('/home/ubuntu/Deckview')
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(PROJECT_ROOT))
 
 from framework.hearthstonejson_downloader import download_from_hearthstonejson
 

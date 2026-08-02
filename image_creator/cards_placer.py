@@ -13,7 +13,7 @@ from db.config import FOLDER
 # Максимальная сторона выходного изображения (уменьшаем для экономии размера файла)
 MAX_OUTPUT_SIDE = 1920
 from db.font import FONT, FONT_PATH
-from threader import to_thread
+from deckview.infrastructure.async_tools import to_thread
 
 # Всегда абсолютный путь к шрифту заголовка (HEARTHSTONE_CYRILLIC), чтобы не подхватить другой шрифт
 _TITLE_FONT_PATH = os.path.abspath(os.path.normpath(FONT_PATH))

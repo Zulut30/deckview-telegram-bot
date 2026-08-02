@@ -1,10 +1,4 @@
-import asyncio
-import functools
-import typing
-
-
-def to_thread(func: typing.Callable) -> typing.Coroutine:
-    @functools.wraps(func)
-    async def wrapper(*args, **kwargs):
-        return await asyncio.to_thread(func, *args, **kwargs)
-    return wrapper
+"""Compatibility alias for :mod:`deckview.infrastructure.async_tools`."""
+import sys
+from deckview.infrastructure import async_tools as _implementation
+sys.modules[__name__] = _implementation

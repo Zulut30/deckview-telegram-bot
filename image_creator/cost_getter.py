@@ -1,6 +1,6 @@
 from db.constants import COST_OF_CARDS
 from db.cards_db import get_card_cost
-from threader import to_thread
+from deckview.infrastructure.async_tools import to_thread
 
 
 @to_thread

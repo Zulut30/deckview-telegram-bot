@@ -1,0 +1,74 @@
+name: Deploy production
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Commit SHA or branch to deploy
+        required: true
+        default: main
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deckview-production
+  cancel-in-progress: false
+
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.revision.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+          fetch-depth: 0
+      - id: revision
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+  deploy:
+    needs: resolve
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+      - name: Configure SSH
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          : "${DEPLOY_HOST:?Set DEPLOY_HOST in the production environment}"
+          : "${DEPLOY_SSH_KEY:?Set DEPLOY_SSH_KEY in the production environment}"
+          port="${DEPLOY_PORT:-22}"
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$DEPLOY_SSH_KEY" > "$HOME/.ssh/deckview_deploy"
+          chmod 600 "$HOME/.ssh/deckview_deploy"
+          ssh-keyscan -p "$port" -H "$DEPLOY_HOST" >> "$HOME/.ssh/known_hosts"
+      - name: Deploy atomically and verify health
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_BASE: ${{ secrets.DEPLOY_BASE }}
+          DEPLOY_SERVICES: ${{ secrets.DEPLOY_SERVICES }}
+          DEPLOY_HEALTHCHECK_URL: ${{ secrets.DEPLOY_HEALTHCHECK_URL }}
+          REVISION: ${{ needs.resolve.outputs.sha }}
+        run: |
+          set -euo pipefail
+          : "${DEPLOY_USER:?Set DEPLOY_USER in the production environment}"
+          port="${DEPLOY_PORT:-22}"
+          printf -v base_q '%q' "${DEPLOY_BASE:-/srv/deckview}"
+          printf -v services_q '%q' "${DEPLOY_SERVICES:-deckview-bot deckview-web deckview-worker}"
+          printf -v health_q '%q' "${DEPLOY_HEALTHCHECK_URL:-http://127.0.0.1:8080/deckview-api/v1/health}"
+          ssh -i "$HOME/.ssh/deckview_deploy" -p "$port" \
+            "$DEPLOY_USER@$DEPLOY_HOST" \
+            "DECKVIEW_DEPLOY_BASE=$base_q DECKVIEW_DEPLOY_SERVICES=$services_q DECKVIEW_HEALTHCHECK_URL=$health_q bash -s -- $REVISION" \
+            < deploy/github_deploy.sh

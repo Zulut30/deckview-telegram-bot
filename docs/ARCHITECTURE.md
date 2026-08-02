@@ -7,10 +7,10 @@ Deckview обслуживает два интерактивных канала �
 ```mermaid
 sequenceDiagram
     participant Client as Telegram / Arena
-    participant Entry as main.py / web_app.py
-    participant Cache as render_cache.py
+    participant Entry as deckview.bot / deckview.web
+    participant Cache as deckview.infrastructure
     participant Queue as Redis + RQ
-    participant Worker as deckview_worker.py
+    participant Worker as deckview.workers
     participant Data as Deck + card sources
     participant Renderer as image_creator
 
@@ -34,18 +34,19 @@ sequenceDiagram
 
 | Компонент | Ответственность |
 |---|---|
-| `main.py` | Telegram update routing, настройки, команды и UX сообщений |
-| `deckview_queue.py` | постановка задач, дедупликация и ожидание результата |
-| `deckview_jobs.py` | сериализуемые фоновые задачи и формирование ответа |
-| `deckview_worker.py` | preload каталогов/ассетов и запуск RQ worker |
+| `deckview/bot/` | Telegram lifecycle, composition root и UX orchestration |
+| `deckview/handlers/` | изолированные aiogram routers |
+| `deckview/services/` | use cases без зависимости от Telegram |
+| `deckview/workers/queue.py` | постановка задач, дедупликация и ожидание результата |
+| `deckview/workers/jobs.py` | сериализуемые фоновые задачи и формирование ответа |
+| `deckview/workers/worker.py` | preload каталогов/ассетов и запуск RQ worker |
 | `image_creator/deck_retriever.py` | локальный deckstring, формат, sideboard и fallback Blizzard |
 | `image_creator/deck_card_sources.py` | метаданные Kolodahs/HSJSON и нормализация карт |
 | `image_creator/prepared_card_cache.py` | подготовленные к композиции изображения карт |
 | `image_creator/cards_placer.py` | единая сетка, оформление, манакривая, пыль и арт класса |
-| `render_cache.py` | ключ по deckstring + дизайну + версиям renderer/data/template |
-| `telegram_photo_cache.py` | повторная отправка через Telegram `file_id` без upload |
-| `web_app.py` | Flask endpoints, dashboard и API orchestration |
-| `web_db.py` | настройки пользователей/чатов, история и публикации |
+| `deckview/infrastructure/` | render/file_id cache и telemetry |
+| `deckview/web/` | Flask endpoints, dashboard и API orchestration |
+| `deckview/repositories/` | настройки пользователей/чатов, история и публикации |
 | `framework/` | HTTP sessions и адаптеры внешних источников |
 
 ## Инварианты рендера
@@ -61,8 +62,11 @@ sequenceDiagram
 
 Горячий путь не должен обращаться к внешним API. Worker заранее загружает локальный каталог карт; карты скачиваются параллельно и сохраняются в prepared-card cache. Render cache хранит готовый JPEG, а Telegram cache — серверный `file_id`.
 
-Метрики этапов (`deck_resolve`, `card_sources`, `art_prepare`, `card_index`, `dust_cost`, `image_compose`) собираются через `perf_telemetry.py`. Любая оптимизация должна сравнивать холодный и тёплый прогон одной и той же колоды.
+Метрики этапов (`deck_resolve`, `card_sources`, `art_prepare`, `card_index`, `dust_cost`, `image_compose`) собираются через `deckview.infrastructure.perf_telemetry`. Любая оптимизация должна сравнивать холодный и тёплый прогон одной и той же колоды.
 
 ## Технический долг
 
-`main.py` и `web_db.py` пока крупнее желаемого. Новую бизнес-логику следует помещать в специализированные модули; вынос существующего кода выполняется небольшими изменениями с регрессионными тестами, без big-bang переписывания.
+`deckview.bot.application` всё ещё содержит исторические handlers, которые будут
+переноситься вертикальными срезами. Новая бизнес-логика уже обязана идти через
+`handler -> service -> repository/integration`; корневые файлы больше не содержат
+реализаций.
