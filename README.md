@@ -6,7 +6,7 @@
     <a href="https://t.me/manacostcard_bot"><img alt="Telegram" src="https://img.shields.io/badge/Telegram-открыть_бота-229ED9?logo=telegram&logoColor=white"></a>
     <a href="https://github.com/Zulut30/deckview-telegram-bot/actions/workflows/tests.yml"><img alt="CI" src="https://github.com/Zulut30/deckview-telegram-bot/actions/workflows/tests.yml/badge.svg"></a>
     <img alt="Python" src="https://img.shields.io/badge/Python-3.10+-3776AB?logo=python&logoColor=white">
-    <img alt="License" src="https://img.shields.io/badge/license-MIT-green">
+    <img alt="License" src="https://img.shields.io/badge/license-proprietary-red">
   </p>
 </div>
 
@@ -104,4 +104,15 @@ production workflow строит immutable release, проверяет Reno-ко
 
 Изменения приветствуются через небольшие PR с тестами. Перед отправкой прочитайте [CONTRIBUTING.md](CONTRIBUTING.md) и [SECURITY.md](SECURITY.md). Архитектурные решения фиксируются в `docs/decisions/`.
 
-Deckview распространяется по лицензии [MIT](LICENSE). Hearthstone и связанные материалы принадлежат Blizzard Entertainment; проект не аффилирован с Blizzard.
+## Лицензия
+
+Исходный код Deckview доступен только для просмотра. Без предварительного
+письменного разрешения Zulut30 запрещены копирование, запуск, изменение,
+распространение, развёртывание собственного бота или API и любое прямое либо
+косвенное коммерческое использование. Полные условия приведены в
+[Deckview Restricted Source License](LICENSE).
+
+Отдельные исходные компоненты и ранее опубликованные версии сохраняют свои
+первоначальные права; обязательные уведомления перечислены в
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Hearthstone и связанные
+материалы принадлежат Blizzard Entertainment; проект не аффилирован с Blizzard.
