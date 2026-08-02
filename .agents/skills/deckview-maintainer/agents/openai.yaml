@@ -1,0 +1,4 @@
+interface:
+  display_name: "Deckview Maintainer"
+  short_description: "Safely maintain and verify Deckview releases"
+  default_prompt: "Use $deckview-maintainer to implement and verify a Deckview change."

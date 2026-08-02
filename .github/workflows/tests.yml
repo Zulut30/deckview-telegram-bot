@@ -1,0 +1,31 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  unit-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Run unit tests
+        env:
+          TEST_BOT_ID: "123456789"
+          TEST_BOT_SECRET: ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghi
+          BATTLE_NET_TOKEN: test-token
+          DASHBOARD_SECRET: test-secret-for-ci
+        run: |
+          export TOKEN="${TEST_BOT_ID}:${TEST_BOT_SECRET}"
+          python -m unittest discover -v

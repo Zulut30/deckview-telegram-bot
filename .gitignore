@@ -1,45 +1,48 @@
-# Секреты и конфигурация
+# Secrets and local configuration
 .env
-.env.local
+.env.*
+!.env.example
 
-# База данных
-*.db
-*.sqlite
-*.sqlite3
-
-# Кэш и данные рантайма
-cache/
+# Python and tooling
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
-*.pycache
-
-# Виртуальное окружение
-venv/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
 .venv/
+venv/
 env/
-
-# Изображения карт (большой объём — поставлять отдельно)
-cards/
-cards_images/
-
-# Данные карт (большие файлы — скачивать через update_cards.py)
-cards.json
-cardsRU.json
-
-# Логи
-*.log
-
-# Временные файлы
-*.tmp
-tmp_decks/
-
-# Экспорт
-exported_decks/
-
-# IDE
 .idea/
 .vscode/
-*.swp
-*.swo
+
+# Runtime state
+*.db
+*.db-shm
+*.db-wal
+*.sqlite*
+*.log
+*.pid
+cache/
+cards/
+library/
+static/generated/
+tmp_decks/
+artifacts/
+backups/
+*.bak*
+
+# User-provided assets
+user_assets/backgrounds/*
+!user_assets/backgrounds/.gitkeep
+user_assets/logos/*
+!user_assets/logos/.gitkeep
+
+# Build output
+dist/
+build/
+rust/deckview_core/target/
+node_modules/
+.DS_Store
