@@ -1,21 +1,74 @@
-MIT License
+Deckview Restricted Source License 1.0
 
-Copyright (c) 2023 H4X4D
+Copyright (c) 2026 Zulut30. All rights reserved.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+1. Scope
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+This license applies only to portions of Deckview for which Zulut30 owns or
+controls the copyright, beginning with the repository revision in which this
+license first appears (the "Software"). Third-party materials and portions of
+earlier versions that were distributed under another license remain governed
+by their respective licenses. See THIRD_PARTY_NOTICES.md.
+
+2. Limited permission to view
+
+You may view the source code through an authorized copy of the repository only
+for personal evaluation, security review, or consideration of a separate
+written license. This permission includes only temporary technical copies made
+automatically by a web browser or the repository hosting service as necessary
+to display the source code.
+
+3. No other rights granted
+
+Except with prior written permission from Zulut30, you may not, in whole or in
+part:
+
+- copy, reproduce, download, clone, or archive the Software outside the limited
+  viewing permission in Section 2;
+- install, run, execute, host, deploy, or otherwise use the Software;
+- modify, adapt, translate, reverse engineer, or create derivative works from
+  the Software;
+- publish, distribute, transmit, sublicense, sell, rent, lease, or otherwise
+  make the Software available to any third party;
+- use the Software or any derivative work for commercial purposes, including
+  paid or advertising-supported products, bots, APIs, hosted services, internal
+  business operations, consulting, or any activity intended to generate direct
+  or indirect commercial benefit; or
+- remove or alter copyright, license, attribution, or proprietary notices.
+
+No patent, trademark, trade-secret, or other intellectual-property license is
+granted by implication, estoppel, or otherwise.
+
+4. Repository hosting terms
+
+Rights that the repository owner grants directly to a repository hosting
+provider or its users solely through that provider's mandatory terms remain
+unaffected. No such platform permission grants a right to use the Software
+outside the functionality expressly provided by that platform.
+
+5. Separate licenses
+
+Commercial, internal, educational, research, integration, redistribution, and
+other use may be permitted only under a separate written agreement signed by
+Zulut30. Requests may be sent through the repository owner's public contact
+channels.
+
+6. Termination
+
+Any permission granted by this license terminates automatically upon breach.
+On termination, you must stop all access and use and delete every copy in your
+possession or control, except where retention is required by law.
+
+7. Disclaimer
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+IMPLIED, INCLUDING BUT NOT LIMITED TO WARRANTIES OF MERCHANTABILITY, FITNESS
+FOR A PARTICULAR PURPOSE, TITLE, AND NON-INFRINGEMENT. TO THE MAXIMUM EXTENT
+PERMITTED BY LAW, THE COPYRIGHT HOLDER WILL NOT BE LIABLE FOR ANY CLAIM,
+DAMAGES, OR OTHER LIABILITY ARISING FROM OR RELATED TO THE SOFTWARE OR THIS
+LICENSE.
+
+8. No waiver
+
+Failure to enforce any provision of this license is not a waiver of that
+provision or of any other right. All rights not expressly granted are reserved.
