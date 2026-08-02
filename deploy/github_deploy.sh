@@ -5,7 +5,7 @@ revision="${1:?Usage: github_deploy.sh COMMIT_SHA}"
 deploy_base="${DECKVIEW_DEPLOY_BASE:-/srv/deckview}"
 repository_url="${DECKVIEW_REPOSITORY_URL:-https://github.com/Zulut30/deckview-telegram-bot.git}"
 services="${DECKVIEW_DEPLOY_SERVICES:-deckview-bot deckview-web deckview-worker}"
-healthcheck_url="${DECKVIEW_HEALTHCHECK_URL:-http://127.0.0.1:8080/deckview-api/v1/health}"
+healthcheck_url="${DECKVIEW_HEALTHCHECK_URL:-http://127.0.0.1:5000/deckview-api/v1/health}"
 
 if [[ ! "$revision" =~ ^[0-9a-f]{40}$ ]]; then
   echo "Deployment revision must be a full Git commit SHA." >&2

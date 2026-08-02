@@ -67,7 +67,7 @@ jobs:
           port="${DEPLOY_PORT:-22}"
           printf -v base_q '%q' "${DEPLOY_BASE:-/srv/deckview}"
           printf -v services_q '%q' "${DEPLOY_SERVICES:-deckview-bot deckview-web deckview-worker}"
-          printf -v health_q '%q' "${DEPLOY_HEALTHCHECK_URL:-http://127.0.0.1:8080/deckview-api/v1/health}"
+          printf -v health_q '%q' "${DEPLOY_HEALTHCHECK_URL:-http://127.0.0.1:5000/deckview-api/v1/health}"
           ssh -i "$HOME/.ssh/deckview_deploy" -p "$port" \
             "$DEPLOY_USER@$DEPLOY_HOST" \
             "DECKVIEW_DEPLOY_BASE=$base_q DECKVIEW_DEPLOY_SERVICES=$services_q DECKVIEW_HEALTHCHECK_URL=$health_q bash -s -- $REVISION" \
