@@ -155,7 +155,7 @@ class DeckCardSourcesTest(unittest.TestCase):
             with (
                 patch.object(grequests_downloader, "FOLDER", folder),
                 patch(
-                    "manacost_api.get_card_image",
+                "deckview.integrations.manacost_api.get_card_image",
                     return_value=source_path.read_bytes(),
                 ),
             ):
@@ -182,7 +182,7 @@ class DeckCardSourcesTest(unittest.TestCase):
                     return_value=False,
                 ),
                 patch(
-                    "manacost_api.get_card_image",
+                "deckview.integrations.manacost_api.get_card_image",
                     return_value=source_path.read_bytes(),
                 ) as get_card_image,
             ):
@@ -217,7 +217,7 @@ class DeckCardSourcesTest(unittest.TestCase):
                     {"DECKVIEW_ARENA_CARD_IMAGE_DIR": str(arena)},
                 ),
                 patch(
-                    "manacost_api.get_card_image",
+                "deckview.integrations.manacost_api.get_card_image",
                     side_effect=AssertionError("HTTP must not be used"),
                 ) as get_card_image,
             ):
@@ -252,7 +252,7 @@ class DeckCardSourcesTest(unittest.TestCase):
                     {"DECKVIEW_ARENA_CARD_IMAGE_DIR": str(arena)},
                 ),
                 patch(
-                    "manacost_api.get_card_image",
+                "deckview.integrations.manacost_api.get_card_image",
                     side_effect=AssertionError("HTTP must not be used"),
                 ) as get_card_image,
             ):

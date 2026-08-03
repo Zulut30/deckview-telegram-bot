@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, patch
 from aiogram.exceptions import TelegramBadRequest
 from PIL import Image
 
-import deckview_jobs
+from deckview.workers import jobs as deckview_jobs
 
 
 class TelegramWorkerPerformanceTests(unittest.IsolatedAsyncioTestCase):

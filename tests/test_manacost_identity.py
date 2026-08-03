@@ -3,9 +3,9 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-import main
-import manacost_identity
-import web_db
+from deckview.bot import application as main
+from deckview.integrations import manacost_identity
+from deckview.repositories import web as web_db
 from image_creator.cards_placer import (
     IMAGE_STYLE_CLASSIC,
     IMAGE_STYLE_CUSTOM,

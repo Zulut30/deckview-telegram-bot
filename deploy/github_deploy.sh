@@ -82,7 +82,7 @@ python3 -m venv "$release_dir/.venv"
   BATTLE_NET_TOKEN=test-token \
   DASHBOARD_SECRET=test-secret-for-deploy \
   WEB_DATABASE_PATH="$release_dir/deploy-imports.db" \
-    .venv/bin/python scripts/check_modular_imports.py
+    .venv/bin/python scripts/check_package_imports.py
   .venv/bin/python scripts/render_regression_decks.py \
     --output-dir "$release_dir/artifacts/reno-regression"
 )

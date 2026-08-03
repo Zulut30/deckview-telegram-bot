@@ -49,6 +49,10 @@ sequenceDiagram
 | `deckview/repositories/` | настройки пользователей/чатов, история и публикации |
 | `framework/` | HTTP sessions и адаптеры внешних источников |
 
+В корне репозитория нет Python-модулей и compatibility aliases. Канонические
+точки запуска: `python -m deckview`, `deckview.web.application:app` и
+`python -m deckview.workers.worker`.
+
 ## Инварианты рендера
 
 - Main deck и sideboard декодируются раздельно.
@@ -68,5 +72,5 @@ sequenceDiagram
 
 `deckview.bot.application` всё ещё содержит исторические handlers, которые будут
 переноситься вертикальными срезами. Новая бизнес-логика уже обязана идти через
-`handler -> service -> repository/integration`; корневые файлы больше не содержат
-реализаций.
+`handler -> service -> repository/integration`; Python-модули в корне запрещены
+architecture-тестом.

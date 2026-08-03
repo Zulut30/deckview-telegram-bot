@@ -2,7 +2,7 @@ import os
 import unittest
 from unittest.mock import patch
 
-import deckview_worker
+from deckview.workers import worker as deckview_worker
 
 
 class DeckviewWorkerTests(unittest.TestCase):

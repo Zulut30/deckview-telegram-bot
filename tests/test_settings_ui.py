@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, patch
 
 from PIL import Image
 
-import main
+from deckview.bot import application as main
 
 
 def _sample_chat(**overrides):

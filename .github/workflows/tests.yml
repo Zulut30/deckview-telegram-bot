@@ -33,7 +33,7 @@ jobs:
       - name: Install dependencies
         run: python -m pip install --disable-pip-version-check -r requirements.txt
       - name: Compile packaged entrypoints
-        run: python -m compileall -q deckview image_creator framework db main.py web_app.py deckview_worker.py
+        run: python -m compileall -q deckview image_creator framework db scripts tools
       - name: Run full test suite
         env:
           TOKEN: 123456789:ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghi
@@ -41,13 +41,13 @@ jobs:
           DASHBOARD_SECRET: test-secret-for-ci
           WEB_DATABASE_PATH: ${{ runner.temp }}/deckview-ci.db
         run: python -m unittest discover -v
-      - name: Smoke-test packaged and compatibility imports
+      - name: Smoke-test canonical package imports
         env:
           TOKEN: 123456789:ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghi
           BATTLE_NET_TOKEN: test-token
           DASHBOARD_SECRET: test-secret-for-ci
           WEB_DATABASE_PATH: ${{ runner.temp }}/deckview-imports.db
-        run: python scripts/check_modular_imports.py
+        run: python scripts/check_package_imports.py
 
   reno-render:
     name: Optional visual Reno regression

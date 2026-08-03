@@ -11,10 +11,10 @@ reno:
 verify: test reno
 
 bot:
-	$(PYTHON) main.py
+	$(PYTHON) -m deckview
 
 web:
-	$(PYTHON) web_app.py
+	$(PYTHON) -m deckview.web.application
 
 worker:
-	$(PYTHON) -m rq worker deckview
+	$(PYTHON) -m deckview.workers.worker

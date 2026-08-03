@@ -7,7 +7,7 @@ from pathlib import Path
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[2] / "deckview"
 PROJECT_ROOT = PACKAGE_ROOT.parent
-LEGACY_ALIAS_MODULES = {
+RETIRED_ROOT_MODULES = {
     "archetip",
     "arena",
     "bgs_comps",
@@ -18,7 +18,6 @@ LEGACY_ALIAS_MODULES = {
     "deck_buttons",
     "deckview_jobs",
     "deckview_queue",
-    "deckview_worker",
     "dashboard",
     "hs_data_api",
     "hsguru_archetype",
@@ -33,10 +32,17 @@ LEGACY_ALIAS_MODULES = {
     "telegram_photo_cache",
     "telegram_rich",
     "threader",
-    "web_app",
     "web_db",
     "wordpress",
 }
+PRODUCTION_ROOTS = (
+    PACKAGE_ROOT,
+    PROJECT_ROOT / "image_creator",
+    PROJECT_ROOT / "framework",
+    PROJECT_ROOT / "db",
+    PROJECT_ROOT / "tools",
+    PROJECT_ROOT / "scripts",
+)
 
 
 def imported_modules(path: Path) -> set[str]:
@@ -50,14 +56,35 @@ def imported_modules(path: Path) -> set[str]:
     return modules
 
 
+def patched_modules(path: Path) -> set[str]:
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    modules: set[str] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call) or not node.args:
+            continue
+        function_name = getattr(node.func, "id", None) or getattr(
+            node.func, "attr", None
+        )
+        target = node.args[0]
+        if (
+            function_name == "patch"
+            and isinstance(target, ast.Constant)
+            and isinstance(target.value, str)
+        ):
+            modules.add(target.value.split(".", 1)[0])
+    return modules
+
+
 class LayerBoundaryTest(unittest.TestCase):
     def test_production_code_uses_packaged_modules_internally(self) -> None:
-        excluded_files = {f"{name}.py" for name in LEGACY_ALIAS_MODULES}
-        for path in PROJECT_ROOT.glob("*.py"):
-            if path.name in excluded_files or path.name.startswith("test_"):
-                continue
-            violations = sorted(imported_modules(path) & LEGACY_ALIAS_MODULES)
-            self.assertEqual([], violations, f"{path.name}: {violations}")
+        for root in PRODUCTION_ROOTS:
+            for path in root.rglob("*.py"):
+                violations = sorted(imported_modules(path) & RETIRED_ROOT_MODULES)
+                self.assertEqual(
+                    [],
+                    violations,
+                    f"{path.relative_to(PROJECT_ROOT)}: {violations}",
+                )
 
     def test_handlers_only_reach_services_and_keyboards(self) -> None:
         forbidden = ("deckview.integrations", "deckview.repositories")
@@ -124,16 +151,42 @@ class LayerBoundaryTest(unittest.TestCase):
             with self.subTest(marker=marker):
                 self.assertNotIn(marker, source)
 
-    def test_root_entrypoints_are_thin_compatibility_modules(self) -> None:
-        for module_name in LEGACY_ALIAS_MODULES | {"main"}:
-            path = PROJECT_ROOT / f"{module_name}.py"
-            with self.subTest(module_name=module_name):
-                self.assertTrue(path.is_file())
-                self.assertLessEqual(
-                    len(path.read_text(encoding="utf-8").splitlines()),
-                    25,
-                    f"{module_name}.py contains implementation instead of a package alias",
-                )
+    def test_repository_root_has_no_python_modules(self) -> None:
+        root_modules = sorted(path.name for path in PROJECT_ROOT.glob("*.py"))
+        self.assertEqual([], root_modules)
+
+    def test_runtime_entrypoints_live_in_the_package(self) -> None:
+        for relative_path in (
+            "__main__.py",
+            "bot/application.py",
+            "web/application.py",
+            "workers/worker.py",
+        ):
+            with self.subTest(relative_path=relative_path):
+                self.assertTrue((PACKAGE_ROOT / relative_path).is_file())
+
+    def test_mock_targets_do_not_use_retired_root_modules(self) -> None:
+        for path in (PROJECT_ROOT / "tests").rglob("*.py"):
+            violations = sorted(patched_modules(path) & RETIRED_ROOT_MODULES)
+            self.assertEqual(
+                [],
+                violations,
+                f"{path.relative_to(PROJECT_ROOT)}: {violations}",
+            )
+
+    def test_systemd_units_use_package_entrypoints(self) -> None:
+        unit_dir = PROJECT_ROOT / "deploy" / "systemd"
+        expected = {
+            "deckview-bot.service": "python -m deckview",
+            "deckview-web.service": "deckview.web.application:app",
+            "deckview-worker.service": "python -m deckview.workers.worker",
+        }
+        for filename, entrypoint in expected.items():
+            with self.subTest(filename=filename):
+                source = (unit_dir / filename).read_text(encoding="utf-8")
+                self.assertIn(entrypoint, source)
+                self.assertNotIn(" main.py", source)
+                self.assertNotIn(" web_app:app", source)
 
 
 if __name__ == "__main__":

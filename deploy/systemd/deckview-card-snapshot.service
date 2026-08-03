@@ -7,10 +7,9 @@ Wants=network-online.target
 Type=oneshot
 User=ubuntu
 Group=ubuntu
-WorkingDirectory=/home/ubuntu/Deckview
-Environment="PATH=/home/ubuntu/Deckview/.venv/bin:/usr/bin"
-EnvironmentFile=-/home/ubuntu/Deckview/.env
-ExecStart=/home/ubuntu/Deckview/.venv/bin/python -m tools.refresh_card_catalog_snapshot
+WorkingDirectory=/srv/deckview/current
+EnvironmentFile=/srv/deckview/shared/.env
+ExecStart=/srv/deckview/current/.venv/bin/python -m tools.refresh_card_catalog_snapshot
 Nice=10
 IOSchedulingClass=idle
 UMask=0027

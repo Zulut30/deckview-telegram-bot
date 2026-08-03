@@ -33,13 +33,13 @@
 
 ```bash
 cd /home/ubuntu/Deckview
-./run_web.sh
+./deploy/run_web.sh
 ```
 
 Или с явным путём к venv:
 
 ```bash
-.venv/bin/gunicorn -w 2 -b 127.0.0.1:5000 --timeout 120 web_app:app
+.venv/bin/gunicorn -w 2 -b 127.0.0.1:5000 --timeout 120 deckview.web.application:app
 ```
 
 Рекомендуется запускать через systemd (см. ниже).
@@ -61,34 +61,16 @@ cd /home/ubuntu/Deckview
    ```
    После получения сертификата в конфиге раскомментировать блок `listen 443` и редирект с HTTP на HTTPS.
 
-## 3. (Опционально) Systemd-сервис
+## 3. Systemd
 
-Создать `/etc/systemd/system/deckview-web.service`:
-
-```ini
-[Unit]
-Description=Deckview Web (Gunicorn)
-After=network.target
-
-[Service]
-Type=notify
-User=ubuntu
-Group=ubuntu
-WorkingDirectory=/home/ubuntu/Deckview
-EnvironmentFile=/home/ubuntu/Deckview/.env
-ExecStart=/home/ubuntu/Deckview/.venv/bin/gunicorn -w 2 -b 127.0.0.1:5000 --timeout 120 --access-logfile - --error-logfile - web_app:app
-Restart=on-failure
-
-[Install]
-WantedBy=multi-user.target
-```
-
-Затем:
+Готовые unit-файлы находятся в `deploy/systemd/` и используют package
+entrypoints без корневых Python-алиасов. Установите их:
 
 ```bash
+sudo cp deploy/systemd/*.service deploy/systemd/*.timer /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable deckview-web
-sudo systemctl start deckview-web
+sudo systemctl enable --now deckview-bot deckview-web deckview-worker
+sudo systemctl enable --now deckview-card-snapshot.timer
 ```
 
 В конфиге Nginx должен быть `proxy_pass http://127.0.0.1:5000`.

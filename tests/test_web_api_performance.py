@@ -3,7 +3,7 @@
 import unittest
 from unittest.mock import MagicMock, patch
 
-import web_app
+from deckview.web import application as web_app
 
 
 class WebApiPerformanceTests(unittest.TestCase):

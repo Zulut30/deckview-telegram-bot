@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-import web_db
+from deckview.repositories import web as web_db
 from image_creator.personalization import (
     classify_deck_layout,
     normalize_cards_per_row,

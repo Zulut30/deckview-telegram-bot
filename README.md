@@ -56,9 +56,9 @@ cp .env.example .env
 Заполните минимум `TOKEN` и `BATTLE_NET_TOKEN`, затем запустите:
 
 ```bash
-python main.py                    # Telegram-бот
-python web_app.py                 # Web/API
-rq worker deckview                # фоновый рендер
+python -m deckview                         # Telegram-бот
+python -m deckview.web.application         # Web/API для разработки
+python -m deckview.workers.worker          # production render workers
 ```
 
 ## Проверка изменений
@@ -86,14 +86,15 @@ deckview/
 └── web/             Flask API и dashboard
 image_creator/       декодирование, данные карт и композиция изображения
 framework/           общая HTTP/Hearthstone инфраструктура
-main.py, web_app.py  совместимые точки входа без бизнес-логики
 tests/               architecture, integration и render regressions
+scripts/             проверки, regression render и служебные команды
+deploy/              systemd, Nginx и атомарный GitHub deployment
 ```
 
-Старые import paths сохранены как короткие aliases и указывают на те же объекты
-модулей внутри `deckview/`. Это позволяет обновлять systemd, gunicorn и RQ без
-big-bang миграции. Контракт защищён architecture-тестами и командой
-`python scripts/check_modular_imports.py`.
+Корень репозитория не содержит Python-модулей. Исторические import aliases
+удалены: бот, Web API и worker запускаются напрямую из пакета `deckview`.
+Контракт защищён architecture-тестами и командой
+`python scripts/check_package_imports.py`.
 
 GitHub Actions компилирует пакет и запускает все тесты для каждого PR. Ручной
 production workflow строит immutable release, проверяет Reno-колоды на 30/40

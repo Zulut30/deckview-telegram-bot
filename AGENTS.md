@@ -14,8 +14,9 @@ Codex may create or improve repository-local skills during work when a workflow 
 
 ## Architecture boundaries
 
-- `main.py`, `web_app.py`, `deckview_worker.py`: compatibility entrypoints only;
-  implementations live under `deckview/`.
+- The repository root contains no Python modules. Runtime entrypoints are
+  `python -m deckview`, `deckview.web.application:app`, and
+  `python -m deckview.workers.worker`.
 - `deckview/bot/`: Telegram lifecycle and router composition.
 - `deckview/handlers/`: aiogram transport adapters.
 - `deckview/services/`: transport-free use cases.
@@ -24,11 +25,17 @@ Codex may create or improve repository-local skills during work when a workflow 
 - `deckview/workers/`, `deckview/infrastructure/`, `deckview/web/`: queue,
   cache/telemetry, and HTTP runtime respectively.
 - `image_creator/`: deck resolution, card hydration, downloading, composition, and visual assets.
-- Root compatibility modules must stay under 25 lines and must never regain
-  business logic.
+- Historical root compatibility modules are retired and must not be recreated.
 - `framework/`, `db/`: shared infrastructure and database helpers.
 
-Prefer extending the matching module instead of growing `main.py` or duplicating renderer logic.
+Prefer extending the matching package module instead of creating root scripts
+or duplicating renderer logic.
+
+## Git delivery
+
+After all required tests and render checks pass, push one atomic commit directly
+to `main`. Do not create a feature branch or pull request unless the repository
+owner explicitly requests one for that change.
 
 ## Definition of done
 

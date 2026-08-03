@@ -38,7 +38,8 @@ DECKVIEW_RENDER_CACHE_READ=1
 .venv/bin/python -m tools.refresh_card_catalog_snapshot
 ```
 
-Для периодического обновления доступны `deploy/deckview-card-snapshot.service` и `.timer`.
+Для периодического обновления доступны
+`deploy/systemd/deckview-card-snapshot.service` и `.timer`.
 
 ## Проверка релиза
 
@@ -59,8 +60,9 @@ systemctl is-active deckview-bot deckview-web deckview-worker
 ## GitHub CI/CD
 
 `.github/workflows/tests.yml` запускается на каждом pull request и push в
-`main`: компилирует точки входа, выполняет все unit/architecture/regression
-тесты и проверяет совместимость старых импортов с пакетными модулями. Ручной
+`main`: компилирует пакетные точки входа, выполняет все
+unit/architecture/regression тесты и проверяет канонические package imports.
+Ручной
 параметр `render_regressions` дополнительно строит и сохраняет как Actions
 artifact эталонные Reno-колоды на 30 и 40 карт.
 
@@ -90,6 +92,15 @@ Systemd units должны использовать `/srv/deckview/current` ка
 `WorkingDirectory`, а исполняемые файлы — из
 `/srv/deckview/current/.venv/bin/`. Deploy user получает узкое sudo-правило
 только для перезапуска `deckview-bot`, `deckview-web` и `deckview-worker`.
+
+Готовые units находятся в `deploy/systemd/`. Установите их один раз:
+
+```bash
+sudo cp deploy/systemd/*.service deploy/systemd/*.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now deckview-bot deckview-web deckview-worker
+sudo systemctl enable --now deckview-card-snapshot.timer
+```
 
 `deploy/github_deploy.sh` создаёт immutable checkout по полному SHA, подключает
 shared runtime-каталоги, ставит зависимости, прогоняет тесты и оба Reno render,

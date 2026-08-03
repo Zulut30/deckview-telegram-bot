@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, patch
 
 from aiogram import types
 
-from bot_security import (
+from deckview.middlewares.flood_protection import (
     FloodProtectionConfig,
     SlidingWindowRateLimiter,
     TelegramFloodProtectionMiddleware,

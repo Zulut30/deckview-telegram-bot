@@ -12,7 +12,7 @@ Keep the live bot stable while making small, measurable changes.
 1. Read `AGENTS.md` and inspect the working tree before editing.
 2. Treat `.env*`, databases, caches, generated images, user uploads, logs, backups, and virtual environments as runtime data. Never commit them.
 3. Preserve unrelated edits and other worktrees. Do not reset or overwrite a dirty production tree.
-4. Prefer focused modules over adding more behavior to `main.py`. Keep Telegram transport, deck resolution, rendering, persistence, and web/API boundaries separate.
+4. Keep the repository root free of Python modules. Extend the matching package under `deckview/`, `image_creator/`, or `tools/`, while keeping Telegram transport, deck resolution, rendering, persistence, and web/API boundaries separate.
 5. Add or update tests for every bug fix and behavior change.
 
 ## Verify every change

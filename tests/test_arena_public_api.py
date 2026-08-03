@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import Mock, patch
 
-import arena
+from deckview.integrations import arena_stats as arena
 
 
 class ManacostPublicApiTest(unittest.TestCase):

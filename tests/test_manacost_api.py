@@ -3,8 +3,8 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import MagicMock, patch
 
-import main
-import manacost_api
+from deckview.bot import application as main
+from deckview.integrations import manacost_api
 
 
 DECK_CODE = "AAECAR8EmacHmqcHm6cHxbEHDamfBKqfBK+SB4WVB86bB5inB7nAB7vAB97EB6zYB9faB9PbB9fbBwAA"

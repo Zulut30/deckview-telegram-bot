@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import Mock, patch
 
-import deckview_queue
+from deckview.workers import queue as deckview_queue
 
 
 class DeckviewQueueTests(unittest.TestCase):
