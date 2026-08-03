@@ -51,6 +51,7 @@ class WebApiPerformanceTests(unittest.TestCase):
             patch.object(web_app, "add_generated", return_value=1),
             patch.object(web_app, "add_deck_cards"),
             patch.object(web_app, "store_render_cache", return_value=None),
+            patch.object(web_app, "write_rendered_jpeg", return_value=False) as write_jpeg,
             patch.object(web_app, "emit_render_timing") as emit,
         ):
             response = self.client.post(
@@ -60,10 +61,9 @@ class WebApiPerformanceTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertFalse(response.get_json()["cached"])
-        image.save.assert_called_once()
-        self.assertEqual(image.save.call_args.kwargs["format"], "JPEG")
-        self.assertEqual(image.save.call_args.kwargs["quality"], 90)
-        self.assertFalse(image.save.call_args.kwargs["optimize"])
+        write_jpeg.assert_called_once()
+        self.assertEqual(write_jpeg.call_args.kwargs["quality"], 90)
+        self.assertFalse(write_jpeg.call_args.kwargs["optimize"])
         self.assertEqual(emit.call_args.kwargs["result"], "ok")
 
     def test_parchment_endpoint_uses_isolated_style_cache(self):
@@ -135,6 +135,84 @@ class WebApiPerformanceTests(unittest.TestCase):
         legacy.assert_not_called()
         create_picture.assert_not_called()
         self.assertEqual(emit.call_args.kwargs["timings"]["cache_status"], "render_cache_hit")
+
+    def test_async_cache_miss_queues_without_blocking_http_worker(self):
+        with (
+            patch.object(web_app, "_require_deckview_api_auth", return_value=None),
+            patch.object(web_app, "lookup_render_cache", return_value=None),
+            patch.object(web_app, "find_cached", return_value=None),
+            patch.object(web_app, "build_render_cache_key", return_value="a" * 64),
+            patch.object(web_app, "enqueue_api_render", return_value=f"api-render-{'a' * 64}") as enqueue,
+            patch.object(web_app, "_run_create_picture") as create_picture,
+        ):
+            response = self.client.post(
+                "/deckview-api/v1/render/parchment",
+                headers={"Prefer": "respond-async"},
+                json={"deck_code": "code", "deck_name": "Name"},
+            )
+
+        payload = response.get_json()
+        self.assertEqual(response.status_code, 202)
+        self.assertFalse(payload["ready"])
+        self.assertEqual(payload["state"], "queued")
+        self.assertTrue(payload["status_url"].endswith(payload["job_id"]))
+        self.assertEqual(enqueue.call_args.args[0]["image_style"], "parchment")
+        create_picture.assert_not_called()
+
+    def test_async_request_still_returns_cache_hit_immediately(self):
+        cached = {
+            "deck_code": "code",
+            "deck_name": "Name",
+            "filename": "render-cache/ab/key.jpg",
+            "artifact_path": "/cache/key.jpg",
+            "cost": 100,
+            "deck_class": "Маг",
+            "deck_mode": "Стандарт",
+        }
+        with (
+            patch.object(web_app, "_require_deckview_api_auth", return_value=None),
+            patch.object(web_app, "lookup_render_cache", return_value=cached),
+            patch.object(web_app.os.path, "isfile", return_value=True),
+            patch.object(web_app, "enqueue_api_render") as enqueue,
+            patch.object(web_app, "emit_render_timing"),
+        ):
+            response = self.client.post(
+                "/deckview-api/v1/render/parchment",
+                headers={"Prefer": "respond-async"},
+                json={"deck_code": "code", "deck_name": "Name"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.get_json()["cached"])
+        enqueue.assert_not_called()
+
+    def test_async_job_status_returns_finished_image(self):
+        job_id = f"api-render-{'b' * 64}"
+        with (
+            patch.object(web_app, "_require_deckview_api_auth", return_value=None),
+            patch.object(
+                web_app,
+                "api_render_job_snapshot",
+                return_value={
+                    "job_id": job_id,
+                    "state": "finished",
+                    "result": {
+                        "success": True,
+                        "filename": "render-cache/bb/result.jpg",
+                        "image_style": "parchment",
+                        "deck_code": "code",
+                        "cost": 100,
+                    },
+                },
+            ),
+        ):
+            response = self.client.get(f"/deckview-api/v1/render/jobs/{job_id}")
+
+        payload = response.get_json()
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(payload["ready"])
+        self.assertEqual(payload["state"], "done")
+        self.assertIn("/static/generated/render-cache/bb/result.jpg", payload["image_url"])
 
 
 if __name__ == "__main__":

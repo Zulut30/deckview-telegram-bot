@@ -70,6 +70,22 @@ done
 python3 -m venv "$release_dir/.venv"
 "$release_dir/.venv/bin/python" -m pip install --quiet --disable-pip-version-check --upgrade pip
 "$release_dir/.venv/bin/python" -m pip install --quiet --disable-pip-version-check -r "$release_dir/requirements.txt"
+"$release_dir/.venv/bin/python" -m pip install --quiet --disable-pip-version-check maturin==1.14.1
+
+mkdir -p "$release_dir/native-wheels"
+(
+  cd "$release_dir/rust/deckview_core"
+  "$release_dir/.venv/bin/maturin" build \
+    --release \
+    --locked \
+    --interpreter "$release_dir/.venv/bin/python" \
+    --out "$release_dir/native-wheels"
+)
+"$release_dir/.venv/bin/python" -m pip install \
+  --quiet \
+  --disable-pip-version-check \
+  --force-reinstall \
+  "$release_dir"/native-wheels/deckview_core-*.whl
 
 (
   cd "$release_dir"
@@ -77,13 +93,23 @@ python3 -m venv "$release_dir/.venv"
   BATTLE_NET_TOKEN=test-token \
   DASHBOARD_SECRET=test-secret-for-deploy \
   WEB_DATABASE_PATH="$release_dir/deploy-test.db" \
+  DECKVIEW_RUST_RENDER=1 \
+  DECKVIEW_RUST_REQUIRED=1 \
+  DECKVIEW_RUST_THREADS="${DECKVIEW_RUST_THREADS:-2}" \
     .venv/bin/python -m unittest discover -v
   TOKEN=123456789:ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghi \
   BATTLE_NET_TOKEN=test-token \
   DASHBOARD_SECRET=test-secret-for-deploy \
   WEB_DATABASE_PATH="$release_dir/deploy-imports.db" \
+  DECKVIEW_RUST_RENDER=1 \
+  DECKVIEW_RUST_REQUIRED=1 \
+  DECKVIEW_RUST_THREADS="${DECKVIEW_RUST_THREADS:-2}" \
     .venv/bin/python scripts/check_package_imports.py
-  .venv/bin/python scripts/render_regression_decks.py \
+  DECKVIEW_RUST_RENDER=1 \
+  DECKVIEW_RUST_REQUIRED=1 \
+  DECKVIEW_RUST_THREADS="${DECKVIEW_RUST_THREADS:-2}" \
+    .venv/bin/python scripts/render_regression_decks.py \
+    --style parchment \
     --output-dir "$release_dir/artifacts/reno-regression"
 )
 

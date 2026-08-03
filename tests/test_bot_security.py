@@ -113,6 +113,18 @@ class MiddlewareTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(await middleware(handler, event, {}))
         handler.assert_awaited_once()
 
+    async def test_default_limit_accepts_four_decks_as_queueable_burst(self):
+        middleware = TelegramFloodProtectionMiddleware(
+            config=FloodProtectionConfig()
+        )
+        handler = AsyncMock(return_value="queued")
+
+        for index in range(4):
+            event = self._message(f"AAEC012345678{index}")
+            self.assertEqual(await middleware(handler, event, {}), "queued")
+
+        self.assertEqual(handler.await_count, 4)
+
     async def test_global_render_limit_stops_distributed_flood(self):
         config = FloodProtectionConfig(
             global_limit=100,

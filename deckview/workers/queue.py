@@ -5,6 +5,7 @@ from typing import Any
 
 from deckview.config import (
     DECKVIEW_QUEUE_ENABLED,
+    DECKVIEW_API_QUEUE_NAME,
     DECKVIEW_QUEUE_JOB_TIMEOUT,
     DECKVIEW_QUEUE_NAME,
     DECKVIEW_REDIS_URL,
@@ -21,6 +22,7 @@ else:
     _IMPORT_ERROR = None
 
 _QUEUE = None
+_API_QUEUE = None
 
 
 def _queue():
@@ -39,6 +41,24 @@ def _queue():
         connection.ping()
         _QUEUE = Queue(DECKVIEW_QUEUE_NAME, connection=connection)
     return _QUEUE
+
+
+def _api_queue():
+    global _API_QUEUE
+    if not DECKVIEW_QUEUE_ENABLED:
+        return None
+    if Redis is None or Queue is None:
+        print(f"[Deckview queue] RQ unavailable: {_IMPORT_ERROR}")
+        return None
+    if _API_QUEUE is None:
+        connection = Redis.from_url(
+            DECKVIEW_REDIS_URL,
+            socket_connect_timeout=1,
+            socket_timeout=2,
+        )
+        connection.ping()
+        _API_QUEUE = Queue(DECKVIEW_API_QUEUE_NAME, connection=connection)
+    return _API_QUEUE
 
 
 def queue_available() -> bool:
@@ -68,6 +88,62 @@ def enqueue_deck_render(payload: dict[str, Any]) -> str | None:
         return job.id
     except Exception as exc:
         print(f"[Deckview queue] Failed to enqueue deck render: {exc}")
+        return None
+
+
+def enqueue_api_render(payload: dict[str, Any], *, job_id: str) -> str | None:
+    """Queue one deterministic API render, coalescing concurrent callers."""
+    try:
+        q = _api_queue()
+        if q is None:
+            return None
+        existing = q.fetch_job(job_id)
+        if existing is not None:
+            status = str(existing.get_status(refresh=True) or "").lower()
+            if status in {"queued", "started", "deferred", "scheduled"}:
+                return existing.id
+            # A request reaches this function only after the render cache missed.
+            # A finished RQ result can therefore point at an evicted/corrupt
+            # artifact and must not be reused as if it were the image cache.
+            existing.delete()
+        queued_payload = dict(payload)
+        queued_payload["_queued_at_ns"] = time.time_ns()
+        job = q.enqueue(
+            "deckview.workers.jobs.render_api_deck_job",
+            queued_payload,
+            job_id=job_id,
+            job_timeout=DECKVIEW_QUEUE_JOB_TIMEOUT,
+            result_ttl=3600,
+            failure_ttl=3600,
+        )
+        return job.id
+    except Exception as exc:
+        # A simultaneous process may have won the deterministic job-id race.
+        try:
+            q = _api_queue()
+            existing = q.fetch_job(job_id) if q is not None else None
+            if existing is not None:
+                return existing.id
+        except Exception:
+            pass
+        print(f"[Deckview queue] Failed to enqueue API render: {exc}")
+        return None
+
+
+def api_render_job_snapshot(job_id: str) -> dict[str, Any] | None:
+    """Return a small, transport-safe snapshot without exposing RQ tracebacks."""
+    try:
+        q = _api_queue()
+        if q is None:
+            return None
+        job = q.fetch_job(job_id)
+        if job is None:
+            return None
+        status = str(job.get_status(refresh=True) or "unknown").lower()
+        result = job.result if status == "finished" and isinstance(job.result, dict) else None
+        return {"job_id": job.id, "state": status, "result": result}
+    except Exception as exc:
+        print(f"[Deckview queue] Failed to read API render job: {exc}")
         return None
 
 

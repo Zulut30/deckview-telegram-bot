@@ -34,9 +34,12 @@ class FloodProtectionConfig:
     user_window_seconds: int = 10
     chat_limit: int = 120
     chat_window_seconds: int = 10
-    render_limit: int = 3
+    # A normal user often pastes several deck codes at once. Rendering is
+    # already bounded by RQ workers, so the middleware should absorb that
+    # burst instead of rejecting the fourth deck.
+    render_limit: int = 12
     render_window_seconds: int = 60
-    global_render_limit: int = 60
+    global_render_limit: int = 240
     global_render_window_seconds: int = 60
     notification_window_seconds: int = 30
     max_tracked_keys: int = 20_000
@@ -70,14 +73,14 @@ class FloodProtectionConfig:
                 "DECKVIEW_RATE_CHAT_WINDOW", 10, minimum=1, maximum=3_600
             ),
             render_limit=_env_int(
-                "DECKVIEW_RATE_RENDER_LIMIT", 3, minimum=1, maximum=100
+                "DECKVIEW_RATE_RENDER_LIMIT", 12, minimum=1, maximum=100
             ),
             render_window_seconds=_env_int(
                 "DECKVIEW_RATE_RENDER_WINDOW", 60, minimum=1, maximum=86_400
             ),
             global_render_limit=_env_int(
                 "DECKVIEW_RATE_GLOBAL_RENDER_LIMIT",
-                60,
+                240,
                 minimum=1,
                 maximum=10_000,
             ),

@@ -131,6 +131,7 @@ class NativeRendererAdapterTests(unittest.TestCase):
             )
 
         self.assertEqual(image.info["deckview_renderer"], "rust")
+        self.assertEqual(image.info["deckview_encoded_jpeg"], jpeg_bytes())
 
     def test_strict_mode_never_hides_native_failure(self):
         module = SimpleNamespace(

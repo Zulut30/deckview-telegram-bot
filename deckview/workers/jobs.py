@@ -33,6 +33,7 @@ from deckview.config import (
 from deckview.integrations.hsguru_archetype import get_cached_archetype, recognize_archetype
 from deckview.integrations.hsguru_fetch import get_new_decks, mark_deck_published
 from image_creator import create_picture
+from image_creator.jpeg_output import write_rendered_jpeg
 from image_creator.font_catalog import normalize_font_key
 from image_creator.personalization import (
     normalize_class_art_mode,
@@ -64,6 +65,7 @@ from deckview.repositories.web import (
 )
 
 _TMP_DIR = "tmp_decks"
+_GENERATED_DIR = PROJECT_ROOT / "static" / "generated"
 _BAD_DECK_ERRORS = (
     "invalid rune costs",
     "invalid hero",
@@ -463,8 +465,14 @@ async def _render_deck_message_job(payload: dict[str, Any]) -> dict[str, Any]:
 
         if cache_entry is None:
             started = time.perf_counter_ns()
-            image.save(tmp_path, format="JPEG", quality=92, optimize=True)
+            reused_native_jpeg = write_rendered_jpeg(
+                image,
+                tmp_path,
+                quality=92,
+                optimize=True,
+            )
             timings["jpeg_ms"] = round((time.perf_counter_ns() - started) / 1_000_000, 3)
+            timings["jpeg_reused_native"] = reused_native_jpeg
             started = time.perf_counter_ns()
             stored_entry = store_render_cache(
                 deck_code=deck_code,
@@ -624,6 +632,154 @@ async def _render_deck_message_job(payload: dict[str, Any]) -> dict[str, Any]:
 
 def render_deck_message_job(payload: dict[str, Any]) -> dict[str, Any]:
     return asyncio.run(_render_deck_message_job(payload))
+
+
+async def _render_api_deck_job(payload: dict[str, Any]) -> dict[str, Any]:
+    """Render one website/API artifact outside the synchronous HTTP worker."""
+    os.chdir(PROJECT_ROOT)
+    init_web_db()
+    _GENERATED_DIR.mkdir(parents=True, exist_ok=True)
+    deck_code = str(payload.get("deck_code") or "").strip()
+    deck_name = str(payload.get("deck_name") or "").strip() or None
+    image_style = str(payload.get("image_style") or "parchment").strip().lower()
+    if not deck_code:
+        return {"success": False, "error_code": "DECK_CODE_REQUIRED"}
+    if image_style not in {"classic", "parchment"}:
+        return {"success": False, "error_code": "INVALID_IMAGE_STYLE"}
+
+    timings: dict[str, Any] = {"cache_status": "miss"}
+    queued_at_ns = int(payload.get("_queued_at_ns") or 0)
+    if queued_at_ns > 0:
+        timings["queue_wait_ms"] = round(
+            max(0.0, (time.time_ns() - queued_at_ns) / 1_000_000),
+            3,
+        )
+    trace_id = str(payload.get("trace_id") or "") or None
+    render_lock = None
+    result_status = "error"
+    started_total = time.perf_counter_ns()
+    try:
+        cached = lookup_render_cache(
+            deck_code,
+            deck_name,
+            scope="api",
+            image_style=image_style,
+        )
+        if cached is not None:
+            timings["cache_status"] = "worker_cache_hit"
+            result_status = "ok"
+            return {"success": True, "cached": True, **cached}
+
+        lock_started = time.perf_counter_ns()
+        render_lock = await asyncio.to_thread(
+            acquire_render_lock,
+            deck_code,
+            deck_name,
+            image_style,
+        )
+        timings["render_lock_ms"] = round(
+            (time.perf_counter_ns() - lock_started) / 1_000_000,
+            3,
+        )
+        if render_lock is not None:
+            cached = lookup_render_cache(
+                deck_code,
+                deck_name,
+                scope="api",
+                image_style=image_style,
+            )
+            if cached is not None:
+                timings["cache_status"] = "singleflight_cache_hit"
+                result_status = "ok"
+                return {"success": True, "cached": True, **cached}
+
+        image, cost, deck_class, deck_mode, card_dbf_ids = await create_picture(
+            deck_code,
+            deck_name=deck_name,
+            timings=timings,
+            image_style=image_style,
+        )
+        if image is None:
+            result_status = "empty"
+            return {"success": False, "error_code": "RENDER_FAILED"}
+
+        filename = (
+            f"deck_{image_style}_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}"
+            ".jpg"
+        )
+        filepath = _GENERATED_DIR / filename
+        jpeg_started = time.perf_counter_ns()
+        timings["jpeg_reused_native"] = await asyncio.to_thread(
+            write_rendered_jpeg,
+            image,
+            filepath,
+            quality=90,
+            optimize=False,
+        )
+        timings["jpeg_ms"] = round(
+            (time.perf_counter_ns() - jpeg_started) / 1_000_000,
+            3,
+        )
+        stored = await asyncio.to_thread(
+            store_render_cache,
+            deck_code=deck_code,
+            deck_name=deck_name,
+            source_path=filepath,
+            cost=cost,
+            deck_class=deck_class,
+            deck_mode=deck_mode,
+            card_dbf_ids=card_dbf_ids,
+            image_style=image_style,
+        )
+        entry = stored or {
+            "deck_code": deck_code,
+            "deck_name": deck_name,
+            "image_style": image_style,
+            "filename": filename,
+            "artifact_path": str(filepath),
+            "cost": int(cost or 0),
+            "deck_class": deck_class,
+            "deck_mode": deck_mode,
+            "card_dbf_ids": card_dbf_ids,
+        }
+        add_generated_with_cards(
+            deck_code=deck_code,
+            deck_name=deck_name,
+            cost=cost,
+            filename=filename,
+            dbf_ids=card_dbf_ids,
+            source=f"api:async:{image_style}",
+            deck_class=deck_class,
+            deck_mode=deck_mode,
+            user_id=None,
+        )
+        result_status = "ok"
+        return {"success": True, "cached": False, **entry}
+    except Exception as exc:
+        timings["error_type"] = type(exc).__name__
+        return {
+            "success": False,
+            "error_code": "INTERNAL_ERROR",
+            "error": str(exc)[:300],
+        }
+    finally:
+        if render_lock is not None:
+            await asyncio.to_thread(release_render_lock, render_lock)
+        timings["handler_total_ms"] = round(
+            (time.perf_counter_ns() - started_total) / 1_000_000,
+            3,
+        )
+        emit_render_timing(
+            source="web_api_async",
+            result=result_status,
+            timings=timings,
+            deck_code=deck_code,
+            trace_id=trace_id,
+        )
+
+
+def render_api_deck_job(payload: dict[str, Any]) -> dict[str, Any]:
+    return asyncio.run(_render_api_deck_job(payload))
 
 
 async def _publish_hsguru_payload_job(payload: dict[str, Any], to_telegram: bool) -> dict[str, Any]:

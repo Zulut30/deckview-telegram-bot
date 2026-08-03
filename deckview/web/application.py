@@ -6,6 +6,7 @@ import asyncio
 import hmac
 import json
 import os
+import re
 import shutil
 import threading
 import time
@@ -24,13 +25,19 @@ from deckview.integrations.hsguru_fetch import (
     translate_deck_name,
 )
 from image_creator import create_picture
+from image_creator.jpeg_output import write_rendered_jpeg
 from deckview.infrastructure.perf_telemetry import emit_render_timing
 from deckview.bot.publishing import publish_deck
 from deckview.infrastructure.render_cache import (
     acquire_render_lock,
+    build_render_cache_key,
     lookup_render_cache,
     release_render_lock,
     store_render_cache,
+)
+from deckview.workers.queue import (
+    api_render_job_snapshot,
+    enqueue_api_render,
 )
 from deckview.repositories.web import (
     init_db,
@@ -228,6 +235,15 @@ def _public_render_style(data, *, force_parchment=False):
     if style not in _PUBLIC_RENDER_STYLES:
         raise ValueError("image_style must be classic or parchment")
     return style
+
+
+def _wants_async_render(data) -> bool:
+    prefer = request.headers.get("Prefer", "").lower()
+    return "respond-async" in prefer or _bool_from_payload(
+        {"async": data.get("async", request.args.get("async"))},
+        "async",
+        False,
+    )
 
 
 def _request_latency_ms(started_ns):
@@ -531,6 +547,38 @@ def deckview_api_render():
     if cached:
         return cached_response(cached, cache_source)
 
+    if _wants_async_render(data):
+        cache_key = build_render_cache_key(deck_code, deck_name, image_style)
+        job_id = enqueue_api_render(
+            {
+                "deck_code": deck_code,
+                "deck_name": deck_name,
+                "image_style": image_style,
+                "trace_id": trace_id,
+            },
+            job_id=f"api-render-{cache_key}",
+        )
+        if job_id:
+            response = _api_json_response(
+                {
+                    "success": True,
+                    "ready": False,
+                    "state": "queued",
+                    "job_id": job_id,
+                    "image_style": image_style,
+                    "status_url": url_for(
+                        "deckview_api_render_job",
+                        job_id=job_id,
+                        _external=True,
+                    ),
+                    "retry_after_ms": 150,
+                },
+                started_ns=handler_started,
+                status=202,
+            )
+            response.headers["Retry-After"] = "1"
+            return response
+
     timings["cache_status"] = "miss"
     result_status = "error"
     render_lock = None
@@ -572,8 +620,14 @@ def deckview_api_render():
         filename = f"deck_{image_style}_{timestamp}.jpg"
         filepath = os.path.join(GENERATED_DIR, filename)
         started = time.perf_counter_ns()
-        image.save(filepath, format="JPEG", quality=90, optimize=False)
+        reused_native_jpeg = write_rendered_jpeg(
+            image,
+            filepath,
+            quality=90,
+            optimize=False,
+        )
         timings["jpeg_ms"] = round((time.perf_counter_ns() - started) / 1_000_000, 3)
+        timings["jpeg_reused_native"] = reused_native_jpeg
         started = time.perf_counter_ns()
         cache_entry = store_render_cache(
             deck_code=deck_code,
@@ -654,6 +708,93 @@ def deckview_api_render():
                 deck_code=deck_code,
                 trace_id=trace_id,
             )
+
+
+@app.route("/deckview-api/v1/render/jobs/<job_id>", methods=["GET"])
+def deckview_api_render_job(job_id):
+    handler_started = time.perf_counter_ns()
+    auth_error = _require_deckview_api_auth({}, public_endpoint=True)
+    if auth_error:
+        return auth_error
+    if not re.fullmatch(r"api-render-[a-f0-9]{64}", str(job_id or "")):
+        return _api_json_response(
+            {"success": False, "error_code": "INVALID_JOB_ID"},
+            started_ns=handler_started,
+            status=400,
+        )
+    snapshot = api_render_job_snapshot(job_id)
+    if snapshot is None:
+        return _api_json_response(
+            {"success": False, "error_code": "JOB_NOT_FOUND"},
+            started_ns=handler_started,
+            status=404,
+        )
+    state = snapshot["state"]
+    result = snapshot.get("result") or {}
+    if state == "finished":
+        if not result.get("success"):
+            return _api_json_response(
+                {
+                    "success": False,
+                    "ready": False,
+                    "state": "failed",
+                    "job_id": job_id,
+                    "error_code": result.get("error_code") or "RENDER_FAILED",
+                },
+                started_ns=handler_started,
+                status=422,
+            )
+        filename = str(result.get("filename") or "")
+        if not filename:
+            return _api_json_response(
+                {"success": False, "error_code": "RENDER_RESULT_INVALID"},
+                started_ns=handler_started,
+                status=500,
+            )
+        return _api_json_response(
+            {
+                "success": True,
+                "ready": True,
+                "state": "done",
+                "job_id": job_id,
+                "cached": bool(result.get("cached")),
+                "image_style": result.get("image_style") or "parchment",
+                "deck_code": result.get("deck_code"),
+                "deck_name": result.get("deck_name"),
+                "cost": result.get("cost"),
+                "deck_class": result.get("deck_class"),
+                "deck_mode": result.get("deck_mode"),
+                "filename": filename,
+                **_generated_image_urls(filename),
+            },
+            started_ns=handler_started,
+            cacheable=True,
+        )
+    if state in {"failed", "stopped", "canceled"}:
+        return _api_json_response(
+            {
+                "success": False,
+                "ready": False,
+                "state": "failed",
+                "job_id": job_id,
+                "error_code": "RENDER_JOB_FAILED",
+            },
+            started_ns=handler_started,
+            status=500,
+        )
+    response = _api_json_response(
+        {
+            "success": True,
+            "ready": False,
+            "state": state,
+            "job_id": job_id,
+            "retry_after_ms": 150,
+        },
+        started_ns=handler_started,
+        status=202,
+    )
+    response.headers["Retry-After"] = "1"
+    return response
 
 
 @app.route("/deckview-api/v1/publish", methods=["POST"])
