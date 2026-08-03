@@ -7,6 +7,13 @@ repository_url="${DECKVIEW_REPOSITORY_URL:-https://github.com/Zulut30/deckview-t
 services="${DECKVIEW_DEPLOY_SERVICES:-deckview-bot deckview-web deckview-worker}"
 healthcheck_url="${DECKVIEW_HEALTHCHECK_URL:-http://127.0.0.1:5000/deckview-api/v1/health}"
 
+# Non-login deploy shells do not load rustup automatically. Prefer the pinned
+# service user's stable toolchain over Debian's legacy Cargo package.
+if [[ -f "$HOME/.cargo/env" ]]; then
+  # shellcheck disable=SC1091
+  source "$HOME/.cargo/env"
+fi
+
 if [[ ! "$revision" =~ ^[0-9a-f]{40}$ ]]; then
   echo "Deployment revision must be a full Git commit SHA." >&2
   exit 2
