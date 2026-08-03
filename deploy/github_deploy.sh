@@ -66,6 +66,9 @@ ln -sfn "$shared_dir/.env" "$release_dir/.env"
 for relative_path in cache cards library tmp_decks static/generated user_assets/backgrounds user_assets/logos; do
   link_shared_directory "$relative_path"
 done
+mkdir -p "$shared_dir/db"
+touch "$shared_dir/db/cards_local.db"
+ln -sfn "$shared_dir/db/cards_local.db" "$release_dir/db/cards_local.db"
 
 python3 -m venv "$release_dir/.venv"
 "$release_dir/.venv/bin/python" -m pip install --quiet --disable-pip-version-check --upgrade pip
