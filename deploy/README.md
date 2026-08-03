@@ -73,4 +73,21 @@ sudo systemctl enable --now deckview-bot deckview-web deckview-worker
 sudo systemctl enable --now deckview-card-snapshot.timer
 ```
 
+Для включения нативного Rust-рендера с безопасным Pillow fallback установите
+общий drop-in для трёх процессов, которые могут собирать изображения:
+
+```bash
+for service in deckview-bot deckview-web deckview-worker; do
+  sudo install -d "/etc/systemd/system/${service}.service.d"
+  sudo install -m 0644 deploy/systemd/deckview-rust-renderer.conf \
+    "/etc/systemd/system/${service}.service.d/rust-renderer.conf"
+done
+sudo systemctl daemon-reload
+sudo systemctl restart deckview-bot deckview-web deckview-worker
+```
+
+Перед перезапуском установите wheel `deckview_core` в используемое сервисами
+виртуальное окружение. Не задавайте `DECKVIEW_RUST_REQUIRED` в production: этот
+флаг предназначен только для CI, smoke-тестов и бенчмарков без fallback.
+
 В конфиге Nginx должен быть `proxy_pass http://127.0.0.1:5000`.
