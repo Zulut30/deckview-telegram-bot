@@ -108,6 +108,44 @@ class RenderCacheTests(unittest.TestCase):
                 )
             self.assertIsNone(stored)
 
+    def test_public_artifact_path_survives_restrictive_service_umask(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            cache_root = root / "render-cache"
+            source = root / "source.jpg"
+            source.write_bytes(b"jpeg-test-bytes")
+            environment = {
+                "WEB_DATABASE_PATH": str(root / "cache.db"),
+                "DECKVIEW_RENDER_CACHE_ROOT": str(cache_root),
+                "DECKVIEW_RENDER_CACHE_WRITE": "1",
+                "DECKVIEW_RENDER_CACHE_READ": "1",
+            }
+            previous_umask = os.umask(0o027)
+            try:
+                with patch.dict(os.environ, environment):
+                    stored = store_render_cache(
+                        deck_code="restricted-code",
+                        deck_name="Restricted",
+                        source_path=source,
+                        cost=0,
+                        deck_class=None,
+                        deck_mode=None,
+                        card_dbf_ids=[],
+                    )
+                    artifact = Path(stored["artifact_path"])
+                    self.assertEqual(cache_root.stat().st_mode & 0o777, 0o755)
+                    self.assertEqual(artifact.parent.stat().st_mode & 0o777, 0o755)
+                    self.assertEqual(artifact.stat().st_mode & 0o777, 0o644)
+
+                    # A hot-cache hit also repairs entries left by an older worker.
+                    artifact.parent.chmod(0o750)
+                    artifact.chmod(0o640)
+                    self.assertIsNotNone(lookup_render_cache("restricted-code", "Restricted"))
+                    self.assertEqual(artifact.parent.stat().st_mode & 0o777, 0o755)
+                    self.assertEqual(artifact.stat().st_mode & 0o777, 0o644)
+            finally:
+                os.umask(previous_umask)
+
     def test_scoped_read_flag_overrides_global_flag(self):
         with patch.dict(
             os.environ,

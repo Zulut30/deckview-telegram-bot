@@ -28,6 +28,8 @@ _redis_lock = threading.Lock()
 _redis_client = None
 _hot_cache_lock = threading.RLock()
 _hot_cache: OrderedDict[str, dict[str, Any]] = OrderedDict()
+_PUBLIC_CACHE_DIR_MODE = 0o755
+_PUBLIC_CACHE_FILE_MODE = 0o644
 
 
 def _hot_cache_limit() -> int:
@@ -59,6 +61,7 @@ def _hot_cache_get(cache_key: str) -> dict[str, Any] | None:
             if not artifact.is_file() or artifact.stat().st_size <= 0:
                 _hot_cache.pop(token, None)
                 return None
+            _ensure_public_artifact_path(artifact)
         except Exception:
             _hot_cache.pop(token, None)
             return None
@@ -104,6 +107,17 @@ def _cache_root() -> Path:
     return _resolve_project_path(
         os.getenv("DECKVIEW_RENDER_CACHE_ROOT", "static/generated/render-cache")
     )
+
+
+def _ensure_public_artifact_path(target: Path) -> None:
+    """Keep nginx traversal/read permissions stable under the service umask."""
+    cache_root = _cache_root()
+    cache_root.mkdir(parents=True, exist_ok=True)
+    cache_root.chmod(_PUBLIC_CACHE_DIR_MODE)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.parent.chmod(_PUBLIC_CACHE_DIR_MODE)
+    if target.is_file():
+        target.chmod(_PUBLIC_CACHE_FILE_MODE)
 
 
 def _versions() -> dict[str, Any]:
@@ -292,7 +306,7 @@ def store_render_cache(
         source = Path(source_path).resolve(strict=True)
         cache_key = build_render_cache_key(deck_code, deck_name, image_style)
         target, artifact_relpath = _artifact_path(cache_key)
-        target.parent.mkdir(parents=True, exist_ok=True)
+        _ensure_public_artifact_path(target)
         if not target.is_file():
             temporary = target.with_name(f".{target.name}.{uuid.uuid4().hex}.tmp")
             try:
@@ -304,7 +318,7 @@ def store_render_cache(
                 # content/version key and served as public deck previews.
                 # Apply the serving mode before publication so nginx never
                 # observes a cache entry it cannot read.
-                temporary.chmod(0o644)
+                temporary.chmod(_PUBLIC_CACHE_FILE_MODE)
                 os.replace(temporary, target)
             finally:
                 if temporary.exists():
@@ -312,7 +326,8 @@ def store_render_cache(
         else:
             # Repair artifacts written by older workers under a restrictive
             # service umask when they are encountered again.
-            target.chmod(0o644)
+            target.chmod(_PUBLIC_CACHE_FILE_MODE)
+        _ensure_public_artifact_path(target)
 
         size = target.stat().st_size
         if size <= 0:
@@ -421,6 +436,7 @@ def lookup_render_cache(
             return None
         if not target.is_file() or target.stat().st_size != row["artifact_size_bytes"]:
             return None
+        _ensure_public_artifact_path(target)
         entry = {
             "cache_key": cache_key,
             "deck_code": (deck_code or "").strip(),
