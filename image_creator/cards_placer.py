@@ -18,9 +18,15 @@ from deckview.infrastructure.async_tools import to_thread
 # Всегда абсолютный путь к шрифту заголовка (HEARTHSTONE_CYRILLIC), чтобы не подхватить другой шрифт
 _TITLE_FONT_PATH = os.path.abspath(os.path.normpath(FONT_PATH))
 
-from .card_showcase import BELWE_FONT_PATH, parchment_background, wood_frame_overlay
-from .custom_background import decorative_background
-from .font_catalog import load_title_font, normalize_font_key
+from .card_showcase import (
+    BELWE_FONT_PATH,
+    PARCHMENT_PATH,
+    WOOD_FRAME_PATH,
+    parchment_background,
+    wood_frame_overlay,
+)
+from .custom_background import decorative_background, normalize_background_blur
+from .font_catalog import FONT_OPTIONS, load_title_font, normalize_font_key
 from .place_runes import place_runes
 from .personalization import (
     classify_deck_layout,
@@ -148,14 +154,51 @@ def _build_rust_payload(
     response,
     deck_name=None,
     sideboard_slugs=None,
+    image_style=IMAGE_STYLE_CLASSIC,
+    image_background=None,
+    image_font="auto",
+    image_text_size="normal",
+    image_dust_display="normal",
+    image_class_art=None,
     image_layout=None,
+    image_mana_curve=None,
 ):
+    image_style = normalize_image_style(image_style)
+    normalized_font = normalize_font_key(image_font)
+    normalized_text_size = normalize_title_size(image_text_size)
+    title_scale = title_size_scale(normalized_text_size)
+    dust_display = normalize_dust_display(image_dust_display)
+    class_art = (
+        image_class_art
+        if isinstance(image_class_art, dict)
+        else {"mode": "class", "path": None}
+    )
+    class_art_mode = normalize_class_art_mode(class_art.get("mode"))
+    mana_curve = (
+        image_mana_curve
+        if isinstance(image_mana_curve, dict)
+        else {"mode": "chart", "path": None}
+    )
+    mana_curve_mode = normalize_mana_curve_mode(mana_curve.get("mode"))
+    title_font_key = (
+        "belwe"
+        if normalized_font == "auto" and image_style == IMAGE_STYLE_PARCHMENT
+        else "hearthstone"
+        if normalized_font == "auto"
+        else normalized_font
+    )
+    font_option = FONT_OPTIONS.get(title_font_key, FONT_OPTIONS["hearthstone"])
+    font_path = os.path.abspath(str(font_option["path"]))
     n_cards = len(counters)
     category = classify_deck_layout(counters, sideboard_slugs)
     n_cols = resolve_cards_per_row(image_layout, category, n_cards)
     size = min(500, max(300, 3000 // max(1, n_cols)))
     cell_w, cell_h = _grid_cell_size(size)
-    top_margin = 250 if deck_name else 0
+    top_margin = (
+        max(250, round(128 * title_scale) + round(105 * max(1.0, title_scale)))
+        if deck_name
+        else 0
+    )
 
     def card_sort_key(card_id):
         is_module = 1 if (_is_sideboard_card_id(card_id, sideboard_slugs) or getattr(card_id, "is_zilliax_module", False)) else 0
@@ -184,17 +227,64 @@ def _build_rust_payload(
         )
 
     deck_class_slug = response.get("class", {}).get("slug", "neutral")
+    custom_logo_path = str(class_art.get("path") or "").strip()
+    class_asset_path = (
+        os.path.abspath(custom_logo_path)
+        if class_art_mode == "logo" and custom_logo_path
+        else os.path.abspath(f"class/class_{deck_class_slug}.png")
+    )
+    background = image_background if isinstance(image_background, dict) else {}
+    background_kind = str(background.get("kind") or "").strip().lower()
+    background_value = str(background.get("value") or "").strip()
+    background_path = (
+        os.path.abspath(background_value)
+        if image_style == IMAGE_STYLE_CUSTOM
+        and background_kind == "image"
+        and background_value
+        else ""
+    )
+    mana_curve_path_value = str(mana_curve.get("path") or "").strip()
+    mana_curve_path = (
+        os.path.abspath(mana_curve_path_value)
+        if mana_curve_mode == "image" and mana_curve_path_value
+        else ""
+    )
+    rune_assets = []
+    for rune_name, count in (response.get("runeSlots") or {}).items():
+        rune_assets.append(
+            {
+                "kind": str(rune_name),
+                "count": max(0, min(3, int(count or 0))),
+                "path": os.path.abspath(f"death_knight/{rune_name}.png"),
+            }
+        )
     card_paths = [card["path"] for card in cards]
+    supporting_paths = [
+        os.path.abspath("assets/x2-white.png"),
+        os.path.abspath("assets/dust.png"),
+        class_asset_path,
+        font_path,
+        os.path.abspath(str(BELWE_FONT_PATH)),
+        os.path.abspath(str(PARCHMENT_PATH)),
+        os.path.abspath(str(WOOD_FRAME_PATH)),
+        background_path,
+        mana_curve_path,
+        *(rune["path"] for rune in rune_assets),
+    ]
     allowed_roots = {
         os.path.realpath(FOLDER),
         os.path.realpath(os.path.dirname(_TITLE_FONT_PATH)),
         os.path.realpath(os.getcwd()),
     }
-    allowed_roots.update(os.path.dirname(os.path.realpath(path)) for path in card_paths)
+    allowed_roots.update(
+        os.path.dirname(os.path.realpath(path))
+        for path in card_paths + supporting_paths
+        if path
+    )
 
     return {
-        "schema_version": 1,
-        "renderer_version": "deckview-native/0.2.0",
+        "schema_version": 2,
+        "renderer_version": "deckview-native/0.3.0",
         "cards": cards,
         "layout": {
             "cell_w": cell_w,
@@ -207,12 +297,33 @@ def _build_rust_payload(
         "assets": {
             "water_path": os.path.abspath("assets/x2-white.png"),
             "dust_asset_path": os.path.abspath("assets/dust.png"),
-            "class_asset_path": os.path.abspath(
-                f"class/class_{deck_class_slug}.png"
-            ),
-            "font_path": _TITLE_FONT_PATH,
+            "class_asset_path": class_asset_path,
+            "font_path": font_path,
+            "ornament_font_path": os.path.abspath(str(BELWE_FONT_PATH)),
+            "parchment_path": os.path.abspath(str(PARCHMENT_PATH)),
+            "wood_frame_path": os.path.abspath(str(WOOD_FRAME_PATH)),
             "allowed_roots": sorted(allowed_roots),
         },
+        "background": {
+            "style": image_style,
+            "kind": background_kind,
+            "value": background_value if background_kind == "gradient" else "",
+            "path": background_path,
+            "blur": normalize_background_blur(background.get("blur")),
+        },
+        "typography": {
+            "font_key": title_font_key,
+            "title_scale": title_scale,
+        },
+        "dust": {"mode": dust_display},
+        "class_art": {
+            "mode": class_art_mode,
+        },
+        "mana_curve": {
+            "mode": mana_curve_mode,
+            "path": mana_curve_path,
+        },
+        "runes": rune_assets,
         "output": {
             "max_output_side": MAX_OUTPUT_SIDE,
             "jpeg_quality": 92,
@@ -232,12 +343,16 @@ def _place_cards_rust(
     response,
     deck_name=None,
     sideboard_slugs=None,
+    image_style=IMAGE_STYLE_CLASSIC,
+    image_background=None,
+    image_font="auto",
+    image_text_size="normal",
+    image_dust_display="normal",
+    image_class_art=None,
     image_layout=None,
+    image_mana_curve=None,
 ):
     if not _rust_render_enabled():
-        return None
-    # Death Knight rune rendering stays on the Python/Pillow path for v1.
-    if class_id == 1:
         return None
     try:
         from deckview_core import render_deck_image
@@ -250,7 +365,14 @@ def _place_cards_rust(
             response,
             deck_name=deck_name,
             sideboard_slugs=sideboard_slugs,
+            image_style=image_style,
+            image_background=image_background,
+            image_font=image_font,
+            image_text_size=image_text_size,
+            image_dust_display=image_dust_display,
+            image_class_art=image_class_art,
             image_layout=image_layout,
+            image_mana_curve=image_mana_curve,
         )
         image_bytes = render_deck_image(payload)
         image = Image.open(BytesIO(image_bytes)).convert("RGB")
@@ -785,30 +907,23 @@ def place_cards(
     # replaced. Parchment remains the sole wood-framed decorative variant.
     is_decorative = image_style == IMAGE_STYLE_PARCHMENT
     is_custom = image_style == IMAGE_STYLE_CUSTOM
-    layout_uses_automatic_columns = not isinstance(image_layout, dict) or all(
-        normalize_cards_per_row(image_layout.get(category, 0)) == 0
-        for category in ("normal", "extended", "highlander")
+    rust_image = _place_cards_rust(
+        counters,
+        mana,
+        class_id,
+        deck_cost,
+        response,
+        deck_name=deck_name,
+        sideboard_slugs=sideboard_slugs,
+        image_style=image_style,
+        image_background=image_background,
+        image_font=normalized_font,
+        image_text_size=normalized_text_size,
+        image_dust_display=dust_display,
+        image_class_art=class_art,
+        image_layout=image_layout,
+        image_mana_curve=mana_curve,
     )
-    rust_image = None
-    if (
-        image_style == IMAGE_STYLE_CLASSIC
-        and normalized_font == "auto"
-        and normalized_text_size == "normal"
-        and dust_display == "normal"
-        and class_art_mode == "class"
-        and mana_curve_mode == "chart"
-        and layout_uses_automatic_columns
-    ):
-        rust_image = _place_cards_rust(
-            counters,
-            mana,
-            class_id,
-            deck_cost,
-            response,
-            deck_name=deck_name,
-            sideboard_slugs=sideboard_slugs,
-            image_layout=image_layout,
-        )
     if rust_image is not None:
         return rust_image
 

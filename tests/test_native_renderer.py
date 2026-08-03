@@ -6,6 +6,7 @@ import os
 import sys
 import unittest
 from io import BytesIO
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -21,6 +22,13 @@ def jpeg_bytes() -> bytes:
 
 
 class NativeRendererAdapterTests(unittest.TestCase):
+    def test_dust_asset_is_a_real_transparent_png_for_both_renderers(self):
+        path = Path(__file__).resolve().parents[1] / "assets" / "dust.png"
+        with Image.open(path) as image:
+            self.assertEqual(image.format, "PNG")
+            rgba = image.convert("RGBA")
+        self.assertEqual(rgba.getchannel("A").getextrema(), (0, 255))
+
     def test_payload_matches_python_grid_spacing(self):
         payload = _build_rust_payload(
             {"card-one": 1},
@@ -30,13 +38,51 @@ class NativeRendererAdapterTests(unittest.TestCase):
             deck_name="Test",
         )
 
-        self.assertEqual(payload["schema_version"], 1)
-        self.assertEqual(payload["renderer_version"], "deckview-native/0.2.0")
+        self.assertEqual(payload["schema_version"], 2)
+        self.assertEqual(payload["renderer_version"], "deckview-native/0.3.0")
         self.assertEqual(payload["layout"]["row_gap"], 72)
         self.assertEqual(payload["layout"]["top_margin"], 250)
         self.assertEqual(payload["deck"]["name"], "Test")
         self.assertEqual(payload["output"]["max_output_side"], 1920)
+        self.assertEqual(payload["background"]["style"], "classic")
+        self.assertEqual(payload["typography"]["title_scale"], 1.0)
+        self.assertEqual(payload["mana_curve"]["mode"], "chart")
         self.assertTrue(payload["assets"]["allowed_roots"])
+
+    def test_payload_carries_every_personalization_group(self):
+        payload = _build_rust_payload(
+            {"card-one": 2},
+            {"card-one": 4},
+            1600,
+            {
+                "cards": [],
+                "class": {"slug": "death-knight"},
+                "runeSlots": {"blood": 2, "frost": 1},
+            },
+            deck_name="Custom",
+            image_style="custom",
+            image_background={
+                "kind": "gradient",
+                "value": "#102030,#405060",
+                "blur": 50,
+            },
+            image_font="belwe",
+            image_text_size="large",
+            image_dust_display="large",
+            image_class_art={"mode": "logo", "path": "assets/title.png"},
+            image_mana_curve={"mode": "hidden", "path": None},
+        )
+
+        self.assertEqual(payload["background"]["style"], "custom")
+        self.assertEqual(payload["background"]["kind"], "gradient")
+        self.assertEqual(payload["background"]["value"], "#102030,#405060")
+        self.assertEqual(payload["background"]["blur"], 50)
+        self.assertEqual(payload["typography"]["font_key"], "belwe")
+        self.assertGreater(payload["typography"]["title_scale"], 1.0)
+        self.assertEqual(payload["dust"]["mode"], "large")
+        self.assertEqual(payload["class_art"]["mode"], "logo")
+        self.assertEqual(payload["mana_curve"]["mode"], "hidden")
+        self.assertEqual(sum(rune["count"] for rune in payload["runes"]), 3)
 
     def test_required_mode_never_hides_native_failure(self):
         module = SimpleNamespace(

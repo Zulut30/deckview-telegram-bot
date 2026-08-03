@@ -14,11 +14,16 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def main() -> int:
-    from deckview_core import RenderContractError, render_deck_image, renderer_info
+    from deckview_core import (
+        RenderContractError,
+        cache_info,
+        render_deck_image,
+        renderer_info,
+    )
 
     payload = {
-        "schema_version": 1,
-        "renderer_version": "deckview-native/0.2.0",
+        "schema_version": 2,
+        "renderer_version": "deckview-native/0.3.0",
         "cards": [
             {
                 "path": str((ROOT / "assets" / "title.png").resolve()),
@@ -26,7 +31,7 @@ def main() -> int:
                 "count": 1,
                 "mana": 1,
                 "is_side": False,
-                "card_type": "SPELL",
+                "card_type": "LOCATION",
             }
         ],
         "layout": {
@@ -42,8 +47,38 @@ def main() -> int:
             "dust_asset_path": str((ROOT / "assets" / "dust.png").resolve()),
             "class_asset_path": str((ROOT / "class" / "class_mage.png").resolve()),
             "font_path": str((ROOT / "HEARTHSTONE_CYRILLIC.ttf").resolve()),
+            "ornament_font_path": str(
+                (ROOT / "assets" / "card_showcase" / "belwe-rus.otf").resolve()
+            ),
+            "parchment_path": str(
+                (ROOT / "assets" / "card_showcase" / "arena-parchment.jpg").resolve()
+            ),
+            "wood_frame_path": str(
+                (ROOT / "assets" / "card_showcase" / "main-page-rail-border.png").resolve()
+            ),
             "allowed_roots": [str(ROOT.resolve())],
         },
+        "background": {
+            "style": "parchment",
+            "kind": "",
+            "value": "",
+            "path": "",
+            "blur": 0,
+        },
+        "typography": {"font_key": "belwe", "title_scale": 1.0},
+        "dust": {"mode": "normal"},
+        "class_art": {"mode": "class"},
+        "mana_curve": {"mode": "chart", "path": ""},
+        "runes": [
+            {
+                "path": str((ROOT / "death_knight" / "blood.png").resolve()),
+                "count": 2,
+            },
+            {
+                "path": str((ROOT / "death_knight" / "frost.png").resolve()),
+                "count": 1,
+            },
+        ],
         "output": {"max_output_side": 1920, "jpeg_quality": 92},
         "deck": {"cost": 40, "name": "Native smoke"},
     }
@@ -76,8 +111,13 @@ def main() -> int:
         raise AssertionError("card path outside allowed roots was accepted")
 
     version, threads, _cached = renderer_info()
-    if version != "deckview_core/0.2.0" or not 1 <= threads <= 16:
+    if version != "deckview_core/0.3.0" or not 1 <= threads <= 16:
         raise AssertionError(f"unexpected renderer_info: {(version, threads)}")
+    hits, misses, evictions, entries = cache_info()
+    if misses < 1 or entries < 1 or evictions < 0 or hits < 0:
+        raise AssertionError(
+            f"unexpected native background cache info: {(hits, misses, evictions, entries)}"
+        )
     print(
         f"native smoke ok: renderer={version}, threads={threads}, "
         f"size={image.size}, bytes={len(encoded)}"

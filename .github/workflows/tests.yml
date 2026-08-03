@@ -59,7 +59,8 @@ jobs:
           .native-venv/bin/python -m pip install --force-reinstall native-wheels/*.whl
           .native-venv/bin/python -c "import deckview_core; print(deckview_core.renderer_info())"
           .native-venv/bin/python scripts/smoke_native_renderer.py
-          .native-venv/bin/python -m unittest tests.test_native_renderer -v
+          .native-venv/bin/python -m unittest \
+            tests.test_native_renderer tests.test_rust_stress_script -v
 
   test:
     name: Python 3.11 / architecture and regressions

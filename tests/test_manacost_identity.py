@@ -208,7 +208,7 @@ class ProfileAndRenderingTests(unittest.TestCase):
             0,
             {"cards": [], "class": {"slug": "neutral"}},
         )
-        self.assertEqual(payload["schema_version"], 1)
+        self.assertEqual(payload["schema_version"], 2)
         water_path = payload["assets"]["water_path"]
         self.assertTrue(water_path.endswith("assets/x2-white.png"))
         self.assertTrue(Path(water_path).is_file())
