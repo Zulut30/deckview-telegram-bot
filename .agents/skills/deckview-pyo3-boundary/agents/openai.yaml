@@ -1,0 +1,4 @@
+interface:
+  display_name: "Deckview PyO3 Boundary"
+  short_description: "Validate PyO3 payload, GIL, errors, and wheels"
+  default_prompt: "Use $deckview-pyo3-boundary to make this Python/Rust integration strict and observable."

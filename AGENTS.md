@@ -12,6 +12,40 @@ them, but all new Telegram code must follow BotForge's dependency direction:
 
 Codex may create or improve repository-local skills during work when a workflow is recurring, fragile, or needs a mandatory verification step. New skills must be created with the system `skill-creator`, live under `.agents/skills/`, pass its validator, and be committed with the behavior they document.
 
+## Rendering skills
+
+Use the repository-local `$deckview-pillow-renderer` for every Pillow,
+NumPy, image layout, alpha, resize, crop, typography, JPEG, or visual
+composition change.
+
+Use `$deckview-visual-regression` for every change affecting rendered output.
+
+Use `$deckview-render-cache` for prepared-card, render, or Telegram `file_id`
+cache changes.
+
+Use `$deckview-rust-compositor` for every change under `rust/deckview_core/`.
+
+Use `$deckview-pyo3-boundary` for changes to the Python/Rust payload, PyO3
+bindings, Maturin configuration, GIL handling, fallback, or wheel packaging.
+
+Use `$deckview-render-contract` for every field or validation change in the
+payload shared by Python and Rust.
+
+Use `$deckview-render-benchmark` before claiming that a renderer or cache
+optimization is faster.
+
+Rust changes are incomplete unless all of these pass:
+
+- `cargo fmt --check`
+- `cargo clippy --all-targets --all-features -- -D warnings`
+- `cargo test --all-features`
+- `maturin build --release`
+- Python import smoke test
+- strict Pillow/Rust visual parity test
+
+Production may fall back to Pillow. Tests, benchmarks, and CI must fail if
+Rust unexpectedly falls back to Pillow.
+
 ## Architecture boundaries
 
 - The repository root contains no Python modules. Runtime entrypoints are

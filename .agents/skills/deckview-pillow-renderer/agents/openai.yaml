@@ -1,0 +1,4 @@
+interface:
+  display_name: "Deckview Pillow Renderer"
+  short_description: "Guard Pillow layout and image composition"
+  default_prompt: "Use $deckview-pillow-renderer to implement and verify this Deckview image-rendering change."

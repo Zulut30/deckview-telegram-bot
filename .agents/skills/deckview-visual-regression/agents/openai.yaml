@@ -1,0 +1,4 @@
+interface:
+  display_name: "Deckview Visual Regression"
+  short_description: "Inspect Reno, sideboard, style, and Rust parity"
+  default_prompt: "Use $deckview-visual-regression to verify this Deckview render change across the required image matrix."

@@ -20,6 +20,47 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  rust-renderer:
+    name: Rust renderer / format, lint, tests, wheel
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+          cache: pip
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - name: Create isolated native test environment
+        run: |
+          python -m venv .native-venv
+          .native-venv/bin/python -m pip install --disable-pip-version-check \
+            -r requirements.txt maturin==1.14.1
+      - name: Check Rust formatting
+        working-directory: rust/deckview_core
+        run: cargo fmt --check
+      - name: Lint Rust targets
+        working-directory: rust/deckview_core
+        run: cargo clippy --all-targets --all-features -- -D warnings
+      - name: Test Rust crate
+        working-directory: rust/deckview_core
+        run: cargo test --all-features
+      - name: Build native wheel
+        working-directory: rust/deckview_core
+        run: ../../.native-venv/bin/maturin build --release --locked --out ../../native-wheels
+      - name: Install and smoke-test native wheel
+        env:
+          DECKVIEW_RUST_RENDER: "1"
+          DECKVIEW_RUST_REQUIRED: "1"
+          DECKVIEW_RUST_THREADS: "2"
+        run: |
+          .native-venv/bin/python -m pip install --force-reinstall native-wheels/*.whl
+          .native-venv/bin/python -c "import deckview_core; print(deckview_core.renderer_info())"
+          .native-venv/bin/python scripts/smoke_native_renderer.py
+          .native-venv/bin/python -m unittest tests.test_native_renderer -v
+
   test:
     name: Python 3.11 / architecture and regressions
     runs-on: ubuntu-latest

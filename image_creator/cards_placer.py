@@ -87,6 +87,14 @@ def _rust_render_enabled() -> bool:
     )
 
 
+def _rust_render_strict() -> bool:
+    """Fail instead of silently falling back during native benchmarks/tests."""
+    return any(
+        os.getenv(key, "0").strip().lower() in ("1", "true", "yes", "on")
+        for key in ("DECKVIEW_RUST_RENDER_STRICT", "DECKVIEW_RUST_REQUIRED")
+    )
+
+
 def _fast_pil_enabled() -> bool:
     """Opt-in switch for output-compatible Pillow/NumPy optimizations."""
     return os.getenv("DECKVIEW_FAST_PIL", "0").strip().lower() in (
@@ -176,21 +184,43 @@ def _build_rust_payload(
         )
 
     deck_class_slug = response.get("class", {}).get("slug", "neutral")
+    card_paths = [card["path"] for card in cards]
+    allowed_roots = {
+        os.path.realpath(FOLDER),
+        os.path.realpath(os.path.dirname(_TITLE_FONT_PATH)),
+        os.path.realpath(os.getcwd()),
+    }
+    allowed_roots.update(os.path.dirname(os.path.realpath(path)) for path in card_paths)
+
     return {
+        "schema_version": 1,
+        "renderer_version": "deckview-native/0.2.0",
         "cards": cards,
-        "cell_w": cell_w,
-        "cell_h": cell_h,
-        "row_gap": 40,
-        "top_margin": top_margin,
-        "bottom_margin": 800,
-        "n_cols": n_cols,
-        "max_output_side": MAX_OUTPUT_SIDE,
-        "deck_cost": int(deck_cost or 0),
-        "deck_name": deck_name or "",
-        "water_path": os.path.abspath("assets/x2-white.png"),
-        "dust_asset_path": os.path.abspath("assets/dust.png"),
-        "class_asset_path": os.path.abspath(f"class/class_{deck_class_slug}.png"),
-        "font_path": _TITLE_FONT_PATH,
+        "layout": {
+            "cell_w": cell_w,
+            "cell_h": cell_h,
+            "row_gap": 72,
+            "top_margin": top_margin,
+            "bottom_margin": 800,
+            "n_cols": n_cols,
+        },
+        "assets": {
+            "water_path": os.path.abspath("assets/x2-white.png"),
+            "dust_asset_path": os.path.abspath("assets/dust.png"),
+            "class_asset_path": os.path.abspath(
+                f"class/class_{deck_class_slug}.png"
+            ),
+            "font_path": _TITLE_FONT_PATH,
+            "allowed_roots": sorted(allowed_roots),
+        },
+        "output": {
+            "max_output_side": MAX_OUTPUT_SIDE,
+            "jpeg_quality": 92,
+        },
+        "deck": {
+            "cost": int(deck_cost or 0),
+            "name": deck_name or "",
+        },
     }
 
 
@@ -224,10 +254,13 @@ def _place_cards_rust(
         )
         image_bytes = render_deck_image(payload)
         image = Image.open(BytesIO(image_bytes)).convert("RGB")
+        image.info["deckview_renderer"] = "rust"
         elapsed_ms = int((time.perf_counter() - started) * 1000)
         print(f"[Deckview Rust] place_cards rendered in {elapsed_ms} ms")
         return image
     except Exception as e:
+        if _rust_render_strict():
+            raise
         print(f"[Deckview Rust] fallback to Python renderer: {type(e).__name__}: {e}")
         return None
 
@@ -1379,4 +1412,5 @@ def place_cards(
             image.convert("RGBA"),
             wood_frame_overlay(image.size, destination_slice=frame_width),
         ).convert("RGB")
+    image.info["deckview_renderer"] = "pillow"
     return image

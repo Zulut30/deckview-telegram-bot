@@ -1,0 +1,4 @@
+interface:
+  display_name: "Deckview Render Benchmark"
+  short_description: "Measure cold/warm render speed and visual parity"
+  default_prompt: "Use $deckview-render-benchmark to measure this Deckview optimization without hidden fallback."

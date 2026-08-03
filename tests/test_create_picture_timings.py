@@ -42,6 +42,7 @@ class CreatePictureTimingTests(unittest.IsolatedAsyncioTestCase):
         ):
             self.assertGreaterEqual(timings[key], 0)
         self.assertEqual(timings["generator_result"], "ok")
+        self.assertEqual(timings["renderer_backend"], "pillow")
 
     async def test_empty_result_contract_is_preserved(self):
         timings = {}

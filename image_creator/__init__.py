@@ -100,6 +100,11 @@ async def create_picture(
         )
         if timings is not None:
             timings["image_compose_ms"] = _elapsed_ms(started)
+            timings["renderer_backend"] = (
+                getattr(image, "info", {}).get("deckview_renderer", "pillow")
+                if image is not None
+                else None
+            )
 
         # Имя класса героя для WordPress (из Blizzard API, locale=ru_RU → «Воин», «Маг» и т.д.)
         deck_class_name = (response.get("class") or {}).get("name") or None

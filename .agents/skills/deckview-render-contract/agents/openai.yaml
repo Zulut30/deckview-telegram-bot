@@ -1,0 +1,4 @@
+interface:
+  display_name: "Deckview Render Contract"
+  short_description: "Version and validate Python/Rust render payloads"
+  default_prompt: "Use $deckview-render-contract to version and validate this Deckview renderer payload change."

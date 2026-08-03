@@ -1,0 +1,4 @@
+interface:
+  display_name: "Deckview Render Cache"
+  short_description: "Protect cache keys, files, invalidation, and hits"
+  default_prompt: "Use $deckview-render-cache to make this Deckview cache change safe across workers and renderer versions."

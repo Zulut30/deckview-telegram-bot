@@ -1,0 +1,4 @@
+interface:
+  display_name: "Deckview Rust Compositor"
+  short_description: "Enforce safe, bounded native image composition"
+  default_prompt: "Use $deckview-rust-compositor to implement and validate this native Deckview renderer change."
