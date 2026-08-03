@@ -74,6 +74,7 @@ class RenderCacheTests(unittest.TestCase):
                 hit = lookup_render_cache("code", "Name")
                 materialized = root / "request" / "deck.jpg"
                 copied = materialize_render_cache(hit, materialized)
+                artifact_mode = Path(stored["artifact_path"]).stat().st_mode & 0o777
                 Path(stored["artifact_path"]).unlink()
                 missing = lookup_render_cache("code", "Name")
 
@@ -83,6 +84,7 @@ class RenderCacheTests(unittest.TestCase):
             self.assertEqual(hit["cache_layer"], "memory")
             self.assertEqual(copied, str(materialized))
             self.assertEqual(materialized.read_bytes(), source.read_bytes())
+            self.assertEqual(artifact_mode, 0o644)
             self.assertIsNone(missing)
             with sqlite3.connect(database) as conn:
                 ttl = conn.execute(

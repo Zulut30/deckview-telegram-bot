@@ -300,10 +300,19 @@ def store_render_cache(
                     os.link(source, temporary)
                 except OSError:
                     shutil.copy2(source, temporary)
+                # Render-cache artifacts are addressed by an unguessable
+                # content/version key and served as public deck previews.
+                # Apply the serving mode before publication so nginx never
+                # observes a cache entry it cannot read.
+                temporary.chmod(0o644)
                 os.replace(temporary, target)
             finally:
                 if temporary.exists():
                     temporary.unlink()
+        else:
+            # Repair artifacts written by older workers under a restrictive
+            # service umask when they are encountered again.
+            target.chmod(0o644)
 
         size = target.stat().st_size
         if size <= 0:
