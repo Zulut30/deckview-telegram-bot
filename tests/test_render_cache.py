@@ -4,10 +4,14 @@ import os
 import sqlite3
 import tempfile
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from unittest.mock import patch
 
+from PIL import Image
+
 from deckview.infrastructure.render_cache import (
+    attach_render_preview,
     build_render_cache_key,
     lookup_render_cache,
     materialize_render_cache,
@@ -53,7 +57,7 @@ class RenderCacheTests(unittest.TestCase):
             database = root / "cache.db"
             cache_root = root / "render-cache"
             source = root / "source.jpg"
-            source.write_bytes(b"jpeg-test-bytes")
+            Image.new("RGB", (64, 64), (20, 30, 40)).save(source, "JPEG")
             environment = {
                 "WEB_DATABASE_PATH": str(database),
                 "DECKVIEW_RENDER_CACHE_ROOT": str(cache_root),
@@ -95,7 +99,7 @@ class RenderCacheTests(unittest.TestCase):
     def test_disabled_write_does_nothing(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             source = Path(temp_dir) / "source.jpg"
-            source.write_bytes(b"jpeg-test-bytes")
+            Image.new("RGB", (64, 64), (20, 30, 40)).save(source, "JPEG")
             with patch.dict(os.environ, {"DECKVIEW_RENDER_CACHE_WRITE": "0"}):
                 stored = store_render_cache(
                     deck_code="code",
@@ -113,7 +117,7 @@ class RenderCacheTests(unittest.TestCase):
             root = Path(temp_dir)
             cache_root = root / "render-cache"
             source = root / "source.jpg"
-            source.write_bytes(b"jpeg-test-bytes")
+            Image.new("RGB", (64, 64), (20, 30, 40)).save(source, "JPEG")
             environment = {
                 "WEB_DATABASE_PATH": str(root / "cache.db"),
                 "DECKVIEW_RENDER_CACHE_ROOT": str(cache_root),
@@ -159,6 +163,108 @@ class RenderCacheTests(unittest.TestCase):
 
             self.assertTrue(render_cache_read_enabled("api"))
             self.assertFalse(render_cache_read_enabled("telegram"))
+
+    def test_preview_derivative_is_small_atomic_and_reused(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            cache_root = root / "render-cache"
+            source = root / "source.jpg"
+            Image.new("RGB", (2048, 2048), (31, 52, 73)).save(
+                source,
+                "JPEG",
+                quality=95,
+            )
+            environment = {
+                "WEB_DATABASE_PATH": str(root / "cache.db"),
+                "DECKVIEW_RENDER_CACHE_ROOT": str(cache_root),
+                "DECKVIEW_RENDER_CACHE_WRITE": "1",
+                "DECKVIEW_RENDER_CACHE_READ": "1",
+            }
+            with patch.dict(os.environ, environment):
+                stored = store_render_cache(
+                    deck_code="preview-code",
+                    deck_name="Preview",
+                    source_path=source,
+                    cost=0,
+                    deck_class=None,
+                    deck_mode=None,
+                    card_dbf_ids=[],
+                    image_style="parchment",
+                    generate_preview=True,
+                )
+
+                self.assertIsNotNone(stored)
+                preview_path = Path(stored["preview_artifact_path"])
+                self.assertTrue(preview_path.is_file())
+                self.assertEqual(preview_path.suffix, ".webp")
+                self.assertLess(preview_path.stat().st_size, source.stat().st_size)
+                with Image.open(preview_path) as preview:
+                    self.assertLessEqual(max(preview.size), 720)
+
+                with patch("deckview.infrastructure.render_cache.Image.open") as image_open:
+                    reused = attach_render_preview(stored)
+                image_open.assert_not_called()
+                self.assertEqual(
+                    reused["preview_filename"],
+                    stored["preview_filename"],
+                )
+
+                preview_path.write_bytes(b"corrupt-preview")
+                repaired = attach_render_preview(stored)
+                self.assertEqual(repaired["preview_filename"], stored["preview_filename"])
+                with Image.open(preview_path) as preview:
+                    self.assertEqual(preview.format, "WEBP")
+
+    def test_telegram_store_does_not_prepare_web_preview(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "source.jpg"
+            Image.new("RGB", (1024, 768), (50, 60, 70)).save(source, "JPEG")
+            environment = {
+                "WEB_DATABASE_PATH": str(root / "cache.db"),
+                "DECKVIEW_RENDER_CACHE_ROOT": str(root / "render-cache"),
+                "DECKVIEW_RENDER_CACHE_WRITE": "1",
+            }
+            with patch.dict(os.environ, environment):
+                with patch("deckview.infrastructure.render_cache.Image.open") as image_open:
+                    stored = store_render_cache(
+                        deck_code="telegram-code",
+                        deck_name="Telegram",
+                        source_path=source,
+                        cost=0,
+                        deck_class=None,
+                        deck_mode=None,
+                        card_dbf_ids=[],
+                    )
+
+            self.assertIsNotNone(stored)
+            self.assertNotIn("preview_filename", stored)
+            image_open.assert_not_called()
+
+    def test_concurrent_preview_writers_publish_one_valid_file(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            cache_root = root / "render-cache"
+            source = cache_root / "aa" / f"{'a' * 64}.jpg"
+            source.parent.mkdir(parents=True)
+            Image.new("RGB", (1024, 768), (90, 20, 40)).save(source, "JPEG")
+            entry = {
+                "cache_key": "a" * 64,
+                "filename": f"render-cache/aa/{'a' * 64}.jpg",
+                "artifact_path": str(source),
+            }
+            with patch.dict(
+                os.environ,
+                {"DECKVIEW_RENDER_CACHE_ROOT": str(cache_root)},
+            ):
+                with ThreadPoolExecutor(max_workers=4) as executor:
+                    results = list(executor.map(lambda _: attach_render_preview(entry), range(4)))
+
+            filenames = {result["preview_filename"] for result in results}
+            self.assertEqual(len(filenames), 1)
+            preview_path = Path(results[0]["preview_artifact_path"])
+            with Image.open(preview_path) as preview:
+                self.assertEqual(preview.format, "WEBP")
 
 
 if __name__ == "__main__":

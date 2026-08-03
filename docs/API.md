@@ -172,11 +172,16 @@ Accepted query aliases:
   "deck_mode": "Стандарт",
   "filename": "deck_20260526_214630_574807.jpg",
   "image_path": "/static/generated/deck_20260526_214630_574807.jpg",
-  "image_url": "https://api.blizzcore.ru/static/generated/deck_20260526_214630_574807.jpg"
+  "image_url": "https://api.blizzcore.ru/static/generated/deck_20260526_214630_574807.jpg",
+  "preview_filename": "render-cache/ab/hash.preview-v1.webp",
+  "preview_image_path": "/static/generated/render-cache/ab/hash.preview-v1.webp",
+  "preview_image_url": "https://api.blizzcore.ru/static/generated/render-cache/ab/hash.preview-v1.webp"
 }
 ```
 
-Use `image_url` directly in an `<img>` tag or download it from your backend.
+Use `preview_image_url` for catalogue cards and `image_url` for downloads or a
+full-size viewer. Preview fields are optional so clients remain compatible with
+older cached results; fall back to `image_url` when they are absent.
 
 ### Render From JavaScript
 

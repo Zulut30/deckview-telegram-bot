@@ -8,11 +8,14 @@ import os
 import shutil
 import sqlite3
 import threading
+import time
 import uuid
 from collections import OrderedDict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable
+
+from PIL import Image
 
 from deckview.config import DECKVIEW_REDIS_URL, HSJSON_BUILD, HSJSON_LOCALE, WEB_DATABASE_PATH
 
@@ -30,6 +33,28 @@ _hot_cache_lock = threading.RLock()
 _hot_cache: OrderedDict[str, dict[str, Any]] = OrderedDict()
 _PUBLIC_CACHE_DIR_MODE = 0o755
 _PUBLIC_CACHE_FILE_MODE = 0o644
+_PREVIEW_VERSION = "preview-v1"
+
+
+def _preview_max_side() -> int:
+    try:
+        return max(320, min(1024, int(os.getenv("DECKVIEW_RENDER_PREVIEW_MAX_SIDE", "720"))))
+    except (TypeError, ValueError):
+        return 720
+
+
+def _preview_quality() -> int:
+    try:
+        return max(40, min(90, int(os.getenv("DECKVIEW_RENDER_PREVIEW_QUALITY", "76"))))
+    except (TypeError, ValueError):
+        return 76
+
+
+def _preview_method() -> int:
+    try:
+        return max(0, min(6, int(os.getenv("DECKVIEW_RENDER_PREVIEW_METHOD", "2"))))
+    except (TypeError, ValueError):
+        return 2
 
 
 def _hot_cache_limit() -> int:
@@ -287,6 +312,81 @@ def _artifact_path(cache_key: str) -> tuple[Path, str]:
     return _cache_root() / relpath, (Path("render-cache") / relpath).as_posix()
 
 
+def _preview_artifact_path(cache_key: str) -> tuple[Path, str]:
+    relpath = Path(cache_key[:2]) / f"{cache_key}.{_PREVIEW_VERSION}.webp"
+    return _cache_root() / relpath, (Path("render-cache") / relpath).as_posix()
+
+
+def _valid_webp(path: Path) -> bool:
+    try:
+        if not path.is_file() or path.stat().st_size < 16:
+            return False
+        with path.open("rb") as stream:
+            header = stream.read(12)
+        return header[:4] == b"RIFF" and header[8:12] == b"WEBP"
+    except OSError:
+        return False
+
+
+def attach_render_preview(entry: dict[str, Any]) -> dict[str, Any]:
+    """Attach an immutable, fail-open WebP derivative to a render-cache entry."""
+    result = dict(entry)
+    started_ns = time.perf_counter_ns()
+    generated = False
+    try:
+        cache_key = str(result.get("cache_key") or "").strip().lower()
+        if len(cache_key) != 64 or any(char not in "0123456789abcdef" for char in cache_key):
+            return result
+        source = Path(str(result["artifact_path"])).resolve(strict=True)
+        cache_root = _cache_root().resolve(strict=True)
+        if not source.is_relative_to(cache_root):
+            raise ValueError("preview source escaped cache root")
+        target, preview_relpath = _preview_artifact_path(cache_key)
+        _ensure_public_artifact_path(target)
+
+        if not _valid_webp(target):
+            temporary = target.with_name(f".{target.name}.{uuid.uuid4().hex}.tmp")
+            try:
+                with Image.open(source) as opened:
+                    image = opened.convert("RGB")
+                    image.thumbnail(
+                        (_preview_max_side(), _preview_max_side()),
+                        Image.Resampling.LANCZOS,
+                    )
+                    image.save(
+                        temporary,
+                        "WEBP",
+                        quality=_preview_quality(),
+                        method=_preview_method(),
+                    )
+                temporary.chmod(_PUBLIC_CACHE_FILE_MODE)
+                # Multiple workers may prepare the same derivative. Publishing
+                # with replace keeps every observable file complete.
+                os.replace(temporary, target)
+                generated = True
+            finally:
+                if temporary.exists():
+                    temporary.unlink()
+        _ensure_public_artifact_path(target)
+        if not _valid_webp(target):
+            return result
+        result.update(
+            {
+                "preview_filename": preview_relpath,
+                "preview_artifact_path": str(target),
+                "preview_size_bytes": target.stat().st_size,
+                "preview_generated": generated,
+                "preview_prepare_ms": round(
+                    (time.perf_counter_ns() - started_ns) / 1_000_000,
+                    3,
+                ),
+            }
+        )
+    except Exception as exc:
+        print(f"[Deckview Render Cache] preview miss: {type(exc).__name__}: {exc}")
+    return result
+
+
 def store_render_cache(
     *,
     deck_code: str,
@@ -297,6 +397,7 @@ def store_render_cache(
     deck_mode: str | None,
     card_dbf_ids: Iterable[int],
     image_style: str = "classic",
+    generate_preview: bool = False,
 ) -> dict[str, Any] | None:
     """Store an existing JPEG without re-encoding it. Any failure is a cache miss."""
     if not render_cache_write_enabled():
@@ -397,6 +498,8 @@ def store_render_cache(
             "created_at": now.isoformat(),
             "expires_at": expires_at.isoformat(),
         }
+        if generate_preview:
+            entry = attach_render_preview(entry)
         _hot_cache_put(cache_key, entry)
         return entry
     except Exception as exc:
@@ -419,6 +522,9 @@ def lookup_render_cache(
         cache_key = build_render_cache_key(deck_code, deck_name, image_style)
         hot = _hot_cache_get(cache_key)
         if hot is not None:
+            if scope == "api":
+                hot = attach_render_preview(hot)
+            _hot_cache_put(cache_key, hot)
             hot["cache_layer"] = "memory"
             return hot
 
@@ -452,6 +558,8 @@ def lookup_render_cache(
             "expires_at": row["expires_at"],
             "cache_layer": "disk",
         }
+        if scope == "api":
+            entry = attach_render_preview(entry)
         _hot_cache_put(cache_key, entry)
         return entry
     except Exception as exc:

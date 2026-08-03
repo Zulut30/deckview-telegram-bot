@@ -94,6 +94,8 @@ def add_deckview_api_headers(response):
         response.headers["Access-Control-Allow-Origin"] = "*"
         response.headers["Access-Control-Allow-Headers"] = "Authorization, Content-Type, X-API-Key"
         response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+    if request.path.startswith("/static/generated/render-cache/"):
+        response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
     return response
 
 
@@ -268,6 +270,21 @@ def _generated_image_urls(filename):
     return {
         "image_url": url_for("static", filename=f"generated/{filename}", _external=True),
         "image_path": url_for("static", filename=f"generated/{filename}"),
+    }
+
+
+def _generated_preview_urls(filename):
+    value = str(filename or "").strip()
+    if not value:
+        return {}
+    return {
+        "preview_filename": value,
+        "preview_image_url": url_for(
+            "static",
+            filename=f"generated/{value}",
+            _external=True,
+        ),
+        "preview_image_path": url_for("static", filename=f"generated/{value}"),
     }
 
 
@@ -514,6 +531,9 @@ def deckview_api_render():
         layer = cached_result.get("cache_layer")
         cache_status = f"{source}_{layer}_hit" if layer else f"{source}_hit"
         timings["cache_status"] = cache_status
+        if cached_result.get("preview_prepare_ms") is not None:
+            timings["preview_ms"] = cached_result["preview_prepare_ms"]
+            timings["preview_bytes"] = cached_result.get("preview_size_bytes")
         timings["handler_total_ms"] = _request_latency_ms(handler_started)
         emit_render_timing(
             source="web_api",
@@ -536,6 +556,7 @@ def deckview_api_render():
                 "deck_mode": cached_result.get("deck_mode"),
                 "filename": cached_result["filename"],
                 **_generated_image_urls(cached_result["filename"]),
+                **_generated_preview_urls(cached_result.get("preview_filename")),
             },
             started_ns=handler_started,
             cacheable=True,
@@ -638,9 +659,13 @@ def deckview_api_render():
             deck_mode=deck_mode_name,
             card_dbf_ids=card_dbf_ids,
             image_style=image_style,
+            generate_preview=True,
         )
         timings["cache_store_ms"] = round((time.perf_counter_ns() - started) / 1_000_000, 3)
         timings["cache_store_result"] = "stored" if cache_entry else "disabled_or_miss"
+        if cache_entry and cache_entry.get("preview_prepare_ms") is not None:
+            timings["preview_ms"] = cache_entry["preview_prepare_ms"]
+            timings["preview_bytes"] = cache_entry.get("preview_size_bytes")
         started = time.perf_counter_ns()
         gen_id = add_generated(
             deck_code,
@@ -654,6 +679,8 @@ def deckview_api_render():
         add_deck_cards(gen_id, card_dbf_ids)
         timings["db_ms"] = round((time.perf_counter_ns() - started) / 1_000_000, 3)
 
+        response_entry = cache_entry or {"filename": filename}
+        response_filename = response_entry["filename"]
         result_status = "ok"
         return _api_json_response(
             {
@@ -666,8 +693,9 @@ def deckview_api_render():
                 "cost": cost,
                 "deck_class": deck_class_name,
                 "deck_mode": deck_mode_name,
-                "filename": filename,
-                **_generated_image_urls(filename),
+                "filename": response_filename,
+                **_generated_image_urls(response_filename),
+                **_generated_preview_urls(response_entry.get("preview_filename")),
             },
             started_ns=handler_started,
         )
@@ -766,6 +794,7 @@ def deckview_api_render_job(job_id):
                 "deck_mode": result.get("deck_mode"),
                 "filename": filename,
                 **_generated_image_urls(filename),
+                **_generated_preview_urls(result.get("preview_filename")),
             },
             started_ns=handler_started,
             cacheable=True,

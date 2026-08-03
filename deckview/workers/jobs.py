@@ -730,7 +730,11 @@ async def _render_api_deck_job(payload: dict[str, Any]) -> dict[str, Any]:
             deck_mode=deck_mode,
             card_dbf_ids=card_dbf_ids,
             image_style=image_style,
+            generate_preview=True,
         )
+        if stored and stored.get("preview_prepare_ms") is not None:
+            timings["preview_ms"] = stored["preview_prepare_ms"]
+            timings["preview_bytes"] = stored.get("preview_size_bytes")
         entry = stored or {
             "deck_code": deck_code,
             "deck_name": deck_name,

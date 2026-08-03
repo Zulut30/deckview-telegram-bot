@@ -10,6 +10,16 @@ class WebApiPerformanceTests(unittest.TestCase):
     def setUp(self):
         self.client = web_app.app.test_client()
 
+    def test_generated_render_cache_assets_are_immutable(self):
+        response = self.client.get(
+            "/static/generated/render-cache/missing/preview.webp",
+        )
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(
+            response.headers["Cache-Control"],
+            "public, max-age=31536000, immutable",
+        )
+
     def test_cache_hit_skips_generation_and_emits_timing(self):
         cached = {
             "filename": "cached.jpg",
@@ -115,6 +125,7 @@ class WebApiPerformanceTests(unittest.TestCase):
             "cost": 100,
             "deck_class": "Маг",
             "deck_mode": "Стандарт",
+            "preview_filename": "render-cache/ab/key.preview-v1.webp",
         }
         with (
             patch.object(web_app, "_require_deckview_api_auth", return_value=None),
@@ -132,6 +143,10 @@ class WebApiPerformanceTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.get_json()["cached"])
         self.assertEqual(response.get_json()["deck_class"], "Маг")
+        self.assertIn(
+            "/static/generated/render-cache/ab/key.preview-v1.webp",
+            response.get_json()["preview_image_url"],
+        )
         legacy.assert_not_called()
         create_picture.assert_not_called()
         self.assertEqual(emit.call_args.kwargs["timings"]["cache_status"], "render_cache_hit")
@@ -202,6 +217,7 @@ class WebApiPerformanceTests(unittest.TestCase):
                         "image_style": "parchment",
                         "deck_code": "code",
                         "cost": 100,
+                        "preview_filename": "render-cache/bb/result.preview-v1.webp",
                     },
                 },
             ),
@@ -213,6 +229,10 @@ class WebApiPerformanceTests(unittest.TestCase):
         self.assertTrue(payload["ready"])
         self.assertEqual(payload["state"], "done")
         self.assertIn("/static/generated/render-cache/bb/result.jpg", payload["image_url"])
+        self.assertIn(
+            "/static/generated/render-cache/bb/result.preview-v1.webp",
+            payload["preview_image_url"],
+        )
 
 
 if __name__ == "__main__":
