@@ -125,6 +125,11 @@ from deckview.infrastructure.render_cache import (
     materialize_render_cache,
     store_render_cache,
 )
+from deckview.services.meta_service import (
+    META_SOURCE_LIMIT,
+    META_VIEW_LIMIT,
+    rank_meta_by_winrate,
+)
 from framework.hearthstonejson_api import (
     configure as hsjson_configure,
     find_cards_by_query,
@@ -281,8 +286,16 @@ async def _prewarm_manacost_cache() -> None:
         await asyncio.gather(
             asyncio.to_thread(manacost_get_decks, "standard", all_pages=True),
             asyncio.to_thread(manacost_get_decks, "wild", all_pages=True),
-            asyncio.to_thread(manacost_get_meta, "standard", limit=10),
-            asyncio.to_thread(manacost_get_meta, "wild", limit=10),
+            asyncio.to_thread(
+                manacost_get_meta,
+                "standard",
+                limit=META_SOURCE_LIMIT,
+            ),
+            asyncio.to_thread(
+                manacost_get_meta,
+                "wild",
+                limit=META_SOURCE_LIMIT,
+            ),
         )
         await asyncio.gather(
             _load_manacost_meta(1),
@@ -4651,7 +4664,11 @@ def _format_manacost_meta(
         f"Патч <b>{html.escape(str(patch))}</b> · Легенда",
         "",
     ]
-    for index, archetype in enumerate((payload.get("items") or [])[:10], 1):
+    ranked_archetypes = rank_meta_by_winrate(
+        payload.get("items") or [],
+        limit=META_VIEW_LIMIT,
+    )
+    for index, archetype in enumerate(ranked_archetypes, 1):
         name = archetype.get("localizedName") or archetype.get("name") or "Архетип"
         slug = str(archetype.get("slug") or "")
         metrics = archetype.get("metrics") or {}
@@ -4687,7 +4704,11 @@ async def _load_manacost_meta(format_id: int) -> tuple[str, InlineKeyboardMarkup
         return cached[1], _meta_keyboard(format_id)
 
     payload, deck_result = await asyncio.gather(
-        asyncio.to_thread(manacost_get_meta, format_id, limit=10),
+        asyncio.to_thread(
+            manacost_get_meta,
+            format_id,
+            limit=META_SOURCE_LIMIT,
+        ),
         asyncio.to_thread(
             manacost_best_decks_by_archetype,
             format_id,
@@ -4695,6 +4716,11 @@ async def _load_manacost_meta(format_id: int) -> tuple[str, InlineKeyboardMarkup
         ),
     )
     base_decks, deck_meta = deck_result
+    ranked_items = rank_meta_by_winrate(
+        payload.get("items") or [],
+        limit=META_VIEW_LIMIT,
+    )
+    payload = {**payload, "items": ranked_items}
     slugs = [
         item.get("slug")
         for item in payload.get("items") or []

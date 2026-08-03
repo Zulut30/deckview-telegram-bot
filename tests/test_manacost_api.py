@@ -223,6 +223,37 @@ class ManacostApiTests(unittest.TestCase):
         self.assertIn("5438158414758831946", text)
         self.assertIn(DECK_CODE, text)
 
+    def test_meta_is_ranked_by_winrate_not_popularity(self):
+        payload = {
+            "format": "standard",
+            "meta": {"period": {"patch": "36.0.3"}},
+            "items": [
+                {
+                    "slug": "popular-deck",
+                    "localizedName": "Популярная колода",
+                    "metrics": {
+                        "winratePercent": 51.0,
+                        "popularityPercent": 25.0,
+                        "games": 25_000,
+                    },
+                },
+                {
+                    "slug": "winning-deck",
+                    "localizedName": "Победная колода",
+                    "metrics": {
+                        "winratePercent": 58.0,
+                        "popularityPercent": 2.0,
+                        "games": 2_000,
+                    },
+                },
+            ],
+        }
+
+        text = main._format_manacost_meta(payload, {}, {"patch": "36.0.3"})
+
+        self.assertIn("Победная колода", text.splitlines()[3])
+        self.assertLess(text.index("Победная колода"), text.index("Популярная колода"))
+
     def test_findwith_callbacks_fit_telegram_limit(self):
         deck = {
             "deck_id": "deck_3c421365f2d01fb702d4350ed9fb6568",
@@ -272,6 +303,53 @@ class ManacostApiTests(unittest.TestCase):
 
         self.assertEqual(calls, 1)
         self.assertTrue(all(result == {"ok": True} for result in results))
+
+
+class MetaLoaderTests(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        main._META_VIEW_CACHE.clear()
+
+    async def asyncTearDown(self):
+        main._META_VIEW_CACHE.clear()
+
+    async def test_meta_loader_fetches_full_source_before_winrate_ranking(self):
+        payload = {
+            "format": "standard",
+            "meta": {"period": {"patch": "36.0.3"}},
+            "items": [
+                {
+                    "slug": "popular-deck",
+                    "localizedName": "Популярная колода",
+                    "metrics": {
+                        "winratePercent": 51.0,
+                        "popularityPercent": 25.0,
+                        "games": 25_000,
+                    },
+                },
+                {
+                    "slug": "winning-deck",
+                    "localizedName": "Победная колода",
+                    "metrics": {
+                        "winratePercent": 58.0,
+                        "popularityPercent": 2.0,
+                        "games": 2_000,
+                    },
+                },
+            ],
+        }
+
+        with (
+            patch.object(main, "manacost_get_meta", return_value=payload) as get_meta,
+            patch.object(
+                main,
+                "manacost_best_decks_by_archetype",
+                return_value=({}, {"patch": "36.0.3"}),
+            ),
+        ):
+            text, _keyboard = await main._load_manacost_meta(1)
+
+        get_meta.assert_called_once_with(1, limit=main.META_SOURCE_LIMIT)
+        self.assertLess(text.index("Победная колода"), text.index("Популярная колода"))
 
 
 if __name__ == "__main__":
