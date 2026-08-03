@@ -1,7 +1,13 @@
 import unittest
+from enum import Enum
 from unittest.mock import Mock, patch
 
 from deckview.workers import queue as deckview_queue
+
+
+class Rq2Status(Enum):
+    STARTED = "started"
+    FINISHED = "finished"
 
 
 class DeckviewQueueTests(unittest.TestCase):
@@ -44,7 +50,7 @@ class DeckviewQueueTests(unittest.TestCase):
     def test_api_render_returns_existing_active_job(self):
         queue = Mock()
         existing = Mock(id="api-render-key")
-        existing.get_status.return_value = "started"
+        existing.get_status.return_value = Rq2Status.STARTED
         queue.fetch_job.return_value = existing
 
         with patch.object(deckview_queue, "_api_queue", return_value=queue):
@@ -76,7 +82,7 @@ class DeckviewQueueTests(unittest.TestCase):
     def test_api_job_snapshot_hides_failure_details(self):
         queue = Mock()
         job = Mock(id="api-render-key", result={"success": True})
-        job.get_status.return_value = "finished"
+        job.get_status.return_value = Rq2Status.FINISHED
         queue.fetch_job.return_value = job
 
         with patch.object(deckview_queue, "_api_queue", return_value=queue):

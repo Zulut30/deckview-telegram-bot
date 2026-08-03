@@ -25,6 +25,12 @@ _QUEUE = None
 _API_QUEUE = None
 
 
+def _normalized_job_status(job: Any) -> str:
+    """Normalize RQ 1.x strings and RQ 2.x JobStatus enum values."""
+    raw_status = job.get_status(refresh=True)
+    return str(getattr(raw_status, "value", raw_status) or "unknown").lower()
+
+
 def _queue():
     global _QUEUE
     if not DECKVIEW_QUEUE_ENABLED:
@@ -99,7 +105,7 @@ def enqueue_api_render(payload: dict[str, Any], *, job_id: str) -> str | None:
             return None
         existing = q.fetch_job(job_id)
         if existing is not None:
-            status = str(existing.get_status(refresh=True) or "").lower()
+            status = _normalized_job_status(existing)
             if status in {"queued", "started", "deferred", "scheduled"}:
                 return existing.id
             # A request reaches this function only after the render cache missed.
@@ -139,7 +145,7 @@ def api_render_job_snapshot(job_id: str) -> dict[str, Any] | None:
         job = q.fetch_job(job_id)
         if job is None:
             return None
-        status = str(job.get_status(refresh=True) or "unknown").lower()
+        status = _normalized_job_status(job)
         result = job.result if status == "finished" and isinstance(job.result, dict) else None
         return {"job_id": job.id, "state": status, "result": result}
     except Exception as exc:
