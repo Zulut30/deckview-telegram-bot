@@ -328,6 +328,62 @@ def _valid_webp(path: Path) -> bool:
         return False
 
 
+def lookup_render_cache_by_key(cache_key: str) -> dict[str, Any] | None:
+    """Resolve an existing immutable render artifact for Telegram downloads.
+
+    Unlike a normal render lookup, this intentionally keeps the exact historic
+    renderer/style revision addressed by the button. That lets an old message
+    download the same image it displayed even after the active renderer changes.
+    """
+    normalized_key = str(cache_key or "").strip().lower()
+    if len(normalized_key) != 64 or any(
+        character not in "0123456789abcdef" for character in normalized_key
+    ):
+        return None
+
+    try:
+        hot = _hot_cache_get(normalized_key)
+        if hot is not None:
+            hot["cache_layer"] = "memory"
+            return hot
+
+        ensure_render_cache_schema()
+        with _connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM render_cache WHERE cache_key = ? AND expires_at > ?",
+                (normalized_key, datetime.now(timezone.utc).isoformat()),
+            ).fetchone()
+        if row is None:
+            return None
+
+        target, expected_relpath = _artifact_path(normalized_key)
+        if row["artifact_relpath"] != expected_relpath:
+            return None
+        if not target.is_file() or target.stat().st_size != row["artifact_size_bytes"]:
+            return None
+        _ensure_public_artifact_path(target)
+        entry = {
+            "cache_key": normalized_key,
+            "filename": expected_relpath,
+            "artifact_path": str(target),
+            "cost": row["cost"],
+            "deck_class": row["deck_class"],
+            "deck_mode": row["deck_mode"],
+            "card_dbf_ids": json.loads(row["card_dbf_ids_json"]),
+            "created_at": row["created_at"],
+            "expires_at": row["expires_at"],
+            "cache_layer": "disk",
+        }
+        _hot_cache_put(normalized_key, entry)
+        return entry
+    except Exception as exc:
+        print(
+            "[Deckview Render Cache] download lookup miss: "
+            f"{type(exc).__name__}: {exc}"
+        )
+        return None
+
+
 def attach_render_preview(entry: dict[str, Any]) -> dict[str, Any]:
     """Attach an immutable, fail-open WebP derivative to a render-cache entry."""
     result = dict(entry)

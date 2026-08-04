@@ -125,6 +125,10 @@ from deckview.infrastructure.render_cache import (
     materialize_render_cache,
     store_render_cache,
 )
+from deckview.services.deck_download_service import (
+    build_download_reference,
+    resolve_cached_download,
+)
 from deckview.services.meta_service import (
     META_SOURCE_LIMIT,
     META_VIEW_LIMIT,
@@ -4078,7 +4082,7 @@ async def _send_deck_photo(
         if not image:
             return False
         image.save(tmp_path, format="JPEG", quality=92, optimize=True)
-        await asyncio.to_thread(
+        cache_entry = await asyncio.to_thread(
             store_render_cache,
             deck_code=deck_code,
             deck_name=deck_name,
@@ -4101,9 +4105,13 @@ async def _send_deck_photo(
             build_deck_caption(deck_class, deck_mode, cost),
             archetype_info,
         )
+    download_reference = build_download_reference(
+        cache_entry,
+        fallback_reference=download_key,
+    )
     action_keyboard = build_deck_action_keyboard(
         deck_code,
-        download_key,
+        download_reference,
         deck.get("id"),
         image_theme.get("button_layout"),
     )
@@ -4555,11 +4563,22 @@ async def cb_compare_img(callback: types.CallbackQuery):
         download_key = uuid.uuid4().hex[:12]
         tmp_path = os.path.join(_TMP_DIR, f"_tmp_dl_{download_key}.jpg")
         image.save(tmp_path, format="JPEG", quality=92, optimize=True)
+        normalized_class = normalize_deck_class_name(deck_class)
+        cache_entry = await asyncio.to_thread(
+            store_render_cache,
+            deck_code=code,
+            deck_name=label,
+            source_path=tmp_path,
+            cost=cost,
+            deck_class=normalized_class,
+            deck_mode=deck_mode,
+            card_dbf_ids=card_dbf_ids,
+            image_style=image_theme["cache_style"],
+        )
 
         # Регистрируем в БД для кнопки «Сохранить»
         gen_id = None
         try:
-            normalized_class = normalize_deck_class_name(deck_class)
             _sender = callback.from_user
             if _sender:
                 ensure_bot_user(
@@ -4581,9 +4600,13 @@ async def cb_compare_img(callback: types.CallbackQuery):
         except Exception as e:
             print(f"[Deckview] cb_compare_img: не удалось сохранить в БД: {e}")
 
+        download_reference = build_download_reference(
+            cache_entry,
+            fallback_reference=download_key,
+        )
         reply_markup = build_deck_action_keyboard(
             code,
-            download_key,
+            download_reference,
             gen_id,
             image_theme.get("button_layout"),
         )
@@ -5424,6 +5447,17 @@ async def find_code_in_message(event: types.Message):
             download_key = uuid.uuid4().hex[:12]
             tmp_path = os.path.join(_TMP_DIR, f"_tmp_dl_{download_key}.jpg")
             image.save(tmp_path, format="JPEG", quality=92, optimize=True)
+            cache_entry = await asyncio.to_thread(
+                store_render_cache,
+                deck_code=word,
+                deck_name=deck_name,
+                source_path=tmp_path,
+                cost=cost,
+                deck_class=normalized_class,
+                deck_mode=deck_mode,
+                card_dbf_ids=card_dbf_ids,
+                image_style=image_theme["cache_style"],
+            )
             gen_id = None
             try:
                 _sender = event.from_user
@@ -5448,9 +5482,13 @@ async def find_code_in_message(event: types.Message):
                 )
             except Exception as e:
                 print(f"[Deckview] Не удалось сохранить колоду в БД: {e}")
+            download_reference = build_download_reference(
+                cache_entry,
+                fallback_reference=download_key,
+            )
             reply_markup = build_deck_action_keyboard(
                 word,
-                download_key,
+                download_reference,
                 gen_id,
                 image_theme.get("button_layout"),
             )
@@ -5471,25 +5509,49 @@ async def find_code_in_message(event: types.Message):
 async def cb_download_as_file(callback: types.CallbackQuery):
     """По нажатию «Скачать как файл» отправляем изображение документом."""
     key = callback.data.removeprefix("open_pack:")
-    # Защита от path traversal: ключ должен быть только hex-символами длиной <= 32
-    if not key or not key.isalnum() or len(key) > 32:
+    # Both legacy random keys and persistent base64url cache references are
+    # path-safe and fit inside Telegram's 64-byte callback_data limit.
+    if not re.fullmatch(r"[A-Za-z0-9_-]{1,43}", key or ""):
         await callback.answer("Неверный запрос.", show_alert=True)
         return
-    path = os.path.join(_TMP_DIR, f"_tmp_dl_{key}.jpg")
-    if not os.path.exists(path):
-        await callback.answer(
-            "Файл устарел — перегенерируйте колоду и нажмите «Скачать» снова.",
-            show_alert=True,
-        )
-        return
+    await callback.answer()
+    path = await asyncio.to_thread(resolve_cached_download, key)
+    if path is None:
+        legacy_path = os.path.join(_TMP_DIR, f"_tmp_dl_{key}.jpg")
+        path = legacy_path if os.path.exists(legacy_path) else None
     try:
+        if path is not None:
+            await callback.message.answer_document(
+                FSInputFile(path, filename="deck.jpg"),
+                caption="Изображение колоды",
+            )
+            return
+
+        # Compatibility for buttons already sent before persistent references:
+        # Telegram retains the displayed photo even after our 2-hour temp file
+        # is cleaned. Download that largest variant and return it as a document.
+        photos = getattr(callback.message, "photo", None) or []
+        largest_photo = photos[-1] if photos else None
+        file_id = getattr(largest_photo, "file_id", None)
+        if not file_id:
+            await callback.message.answer(
+                "Не удалось восстановить файл. Отправьте код колоды ещё раз."
+            )
+            return
+        telegram_file = await bot.get_file(file_id)
+        buffer = BytesIO()
+        await bot.download(telegram_file, destination=buffer)
+        payload = buffer.getvalue()
+        if not payload:
+            raise ValueError("Telegram вернул пустой файл")
         await callback.message.answer_document(
-            FSInputFile(path, filename="deck.jpg"),
+            BufferedInputFile(payload, filename="deck.jpg"),
             caption="Изображение колоды",
         )
-        await callback.answer("Файл отправлен.")
     except Exception as e:
-        await callback.answer(f"Ошибка: {e}", show_alert=True)
+        await callback.message.answer(
+            f"Не удалось скачать файл: {html.escape(str(e)[:180])}"
+        )
 
 
 async def _edit_profile_message(

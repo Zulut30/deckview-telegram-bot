@@ -13,6 +13,7 @@ from PIL import Image
 from deckview.infrastructure.render_cache import (
     attach_render_preview,
     build_render_cache_key,
+    lookup_render_cache_by_key,
     lookup_render_cache,
     materialize_render_cache,
     store_render_cache,
@@ -95,6 +96,35 @@ class RenderCacheTests(unittest.TestCase):
                     "SELECT (julianday(expires_at) - julianday(created_at)) * 24 FROM render_cache"
                 ).fetchone()[0]
             self.assertAlmostEqual(ttl, 504, places=3)
+
+    def test_lookup_by_cache_key_keeps_download_available_after_temp_cleanup(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "source.jpg"
+            Image.new("RGB", (64, 64), (20, 30, 40)).save(source, "JPEG")
+            environment = {
+                "WEB_DATABASE_PATH": str(root / "cache.db"),
+                "DECKVIEW_RENDER_CACHE_ROOT": str(root / "render-cache"),
+                "DECKVIEW_RENDER_CACHE_WRITE": "1",
+                "DECKVIEW_RENDER_CACHE_READ": "1",
+            }
+            with patch.dict(os.environ, environment):
+                stored = store_render_cache(
+                    deck_code="download-code",
+                    deck_name="Download",
+                    source_path=source,
+                    cost=100,
+                    deck_class="Маг",
+                    deck_mode="Стандарт",
+                    card_dbf_ids=[1, 2],
+                )
+                hit = lookup_render_cache_by_key(stored["cache_key"])
+                invalid = lookup_render_cache_by_key("../escape")
+
+            self.assertIsNotNone(hit)
+            self.assertEqual(hit["artifact_path"], stored["artifact_path"])
+            self.assertEqual(hit["cache_key"], stored["cache_key"])
+            self.assertIsNone(invalid)
 
     def test_disabled_write_does_nothing(self):
         with tempfile.TemporaryDirectory() as temp_dir:

@@ -55,6 +55,7 @@ from deckview.infrastructure.telegram_photo_cache import (
     get_telegram_photo_file_id,
     store_telegram_photo_file_id,
 )
+from deckview.services.deck_download_service import build_download_reference
 from deckview.repositories.web import (
     add_bot_event,
     add_generated_with_cards,
@@ -540,9 +541,13 @@ async def _render_deck_message_job(payload: dict[str, Any]) -> dict[str, Any]:
             archetype_info,
         )
 
+        download_reference = build_download_reference(
+            cache_entry,
+            fallback_reference=download_key,
+        )
         action_keyboard = build_deck_action_keyboard(
             deck_code,
-            download_key,
+            download_reference,
             gen_id,
             payload.get("button_layout"),
         )

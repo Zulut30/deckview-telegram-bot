@@ -344,6 +344,35 @@ class SettingsKeyboardTests(unittest.TestCase):
             for button in compact.inline_keyboard[0]
         ))
 
+    def test_expired_legacy_download_falls_back_to_telegram_photo(self):
+        async def scenario():
+            callback = SimpleNamespace(
+                data="open_pack:legacy123",
+                message=SimpleNamespace(
+                    photo=[SimpleNamespace(file_id="telegram-photo-id")],
+                    answer_document=AsyncMock(),
+                ),
+                answer=AsyncMock(),
+            )
+
+            async def download_file(_file, destination):
+                destination.write(b"telegram-photo")
+
+            with (
+                patch.object(main.os.path, "exists", return_value=False),
+                patch.object(main, "resolve_cached_download", return_value=None),
+                patch.object(main.bot, "get_file", AsyncMock(return_value=SimpleNamespace(file_path="photo.jpg"))),
+                patch.object(main.bot, "download", AsyncMock(side_effect=download_file)),
+            ):
+                await main.cb_download_as_file(callback)
+
+            callback.message.answer_document.assert_awaited_once()
+            sent_file = callback.message.answer_document.await_args.args[0]
+            self.assertEqual(sent_file.data, b"telegram-photo")
+            callback.answer.assert_awaited_once_with()
+
+        asyncio.run(scenario())
+
     def test_only_latest_preview_generation_remains_active(self):
         key, first = main._next_personalization_preview("user", 42)
         same_key, second = main._next_personalization_preview("user", 42)
