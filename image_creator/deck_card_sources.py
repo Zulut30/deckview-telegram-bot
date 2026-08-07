@@ -21,6 +21,7 @@ import requests
 import urllib3
 
 from deckview.infrastructure.async_tools import to_thread
+from framework.hearthstonejson_api import get_loaded_card_by_dbfid
 from image_creator.card_catalog_snapshot import get_snapshot_cards
 
 
@@ -71,6 +72,42 @@ _RARITY_IDS = {
     "EPIC": 4,
     "LEGENDARY": 5,
 }
+
+
+def _metadata_with_canonical_identity(
+    dbf_id: int,
+    source: dict[str, Any],
+) -> tuple[dict[str, Any], bool]:
+    """Reject a Kolodahs CardID that disagrees with preloaded HSJSON.
+
+    A mismatched CardID can point the downloader at a completely different
+    card image.  Use the matching HSJSON record as one coherent identity
+    instead of mixing its CardID with the source card's name or text.
+    """
+    canonical = get_loaded_card_by_dbfid(dbf_id)
+    source_card_id = str(source.get("card_id") or "").strip().lstrip("/")
+    canonical_card_id = str((canonical or {}).get("cardId") or "").strip()
+    if (
+        not canonical
+        or not source_card_id
+        or not canonical_card_id
+        or source_card_id == canonical_card_id
+    ):
+        return source, False
+
+    return (
+        {
+            **source,
+            "card_id": canonical_card_id,
+            "name": canonical.get("name"),
+            "mana": canonical.get("manaCost"),
+            "image_url": canonical.get("image"),
+            "collectible": canonical.get("collectible"),
+            "rarity": canonical.get("rarity"),
+            "type": canonical.get("type"),
+        },
+        True,
+    )
 
 
 def _remember_main_slug(index: dict[int, str], dbf_id: int, slug: str) -> None:
@@ -336,6 +373,12 @@ def hydrate_deck_cards_sync(cards: list[dict[str, Any]]) -> list[dict[str, Any]]
         source = metadata.get(dbf_id) if dbf_id is not None else None
         if not source:
             continue
+        source, identity_corrected = _metadata_with_canonical_identity(
+            dbf_id,
+            source,
+        )
+        if identity_corrected:
+            card["deckviewMetadataFallback"] = "hsjson-card-id-mismatch"
         mana_cost = source.get("mana")
         if mana_cost is not None:
             try:

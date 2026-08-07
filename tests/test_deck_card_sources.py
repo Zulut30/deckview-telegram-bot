@@ -63,6 +63,58 @@ class DeckCardSourcesTest(unittest.TestCase):
         self.assertEqual(card["deckviewPlayerClass"], "MAGE")
         self.assertEqual(card["deckviewCardType"], "HERO")
 
+    def test_hsjson_identity_wins_when_kolodahs_dbf_mapping_is_wrong(self):
+        cards = [{"id": 119705, "dbfId": 119705}]
+        wrong_source = {
+            "card_id": "TIME_609",
+            "name": "Командир следопытов Сильвана",
+            "mana": 3,
+            "rarity": "LEGENDARY",
+            "collectible": True,
+            "player_class": "HUNTER",
+            "type": "MINION",
+            "image_url": "https://kolodahs.ru/cards/ruru/TIME_609.png",
+        }
+        canonical = {
+            "cardId": "TIME_609t1",
+            "name": "Капитан следопытов Аллерия",
+            "manaCost": 3,
+            "rarity": None,
+            "collectible": False,
+            "type": "MINION",
+            "image": (
+                "https://art.hearthstonejson.com/v1/render/latest/ruRU/512x/"
+                "TIME_609t1.png"
+            ),
+        }
+        with (
+            patch(
+                "image_creator.deck_card_sources.get_snapshot_cards",
+                return_value={119705: wrong_source},
+            ),
+            patch(
+                "image_creator.deck_card_sources.get_loaded_card_by_dbfid",
+                return_value=canonical,
+            ),
+            patch.object(
+                deck_card_sources,
+                "_existing_slug",
+                return_value="119705-time-609t1",
+            ),
+        ):
+            hydrated = hydrate_deck_cards_sync(cards)
+
+        card = hydrated[0]
+        self.assertEqual(card["cardId"], "TIME_609t1")
+        self.assertEqual(card["slug"], "119705-time-609t1")
+        self.assertEqual(card["name"], "Капитан следопытов Аллерия")
+        self.assertEqual(card["image"], canonical["image"])
+        self.assertFalse(card["collectible"])
+        self.assertEqual(
+            card["deckviewMetadataFallback"],
+            "hsjson-card-id-mismatch",
+        )
+
     def test_existing_slug_never_reuses_sideboard_copy_for_main_deck(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
