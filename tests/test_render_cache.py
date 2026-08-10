@@ -30,6 +30,19 @@ class RenderCacheTests(unittest.TestCase):
             changed = build_render_cache_key("code", "Name")
         self.assertNotEqual(first, changed)
 
+    def test_card_asset_revision_changes_cache_key(self):
+        with patch.dict(
+            os.environ,
+            {"DECKVIEW_CARD_ASSET_VERSION": "arena-image-v2"},
+        ):
+            current = build_render_cache_key("code", "Name")
+        with patch.dict(
+            os.environ,
+            {"DECKVIEW_CARD_ASSET_VERSION": "arena-image-v3"},
+        ):
+            changed = build_render_cache_key("code", "Name")
+        self.assertNotEqual(current, changed)
+
     def test_parchment_style_has_its_own_cache_key(self):
         classic = build_render_cache_key("code", "Name")
         explicit_classic = build_render_cache_key("code", "Name", "classic")

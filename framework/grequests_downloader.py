@@ -37,6 +37,10 @@ def _card_cache_path(slug):
 
 
 def _arena_marker_path(slug):
+    return f"{FOLDER}{slug}.arena-v2"
+
+
+def _legacy_arena_marker_path(slug):
     return f"{FOLDER}{slug}.arena-v1"
 
 
@@ -46,7 +50,14 @@ def _hsjson_marker_path(slug):
 
 def _has_cached_photo(slug):
     path = _card_cache_path(slug)
-    return os.path.isfile(path) and os.path.getsize(path) > 100
+    valid = os.path.isfile(path) and os.path.getsize(path) > 100
+    if not valid:
+        return False
+    return not (
+        os.path.isfile(_legacy_arena_marker_path(slug))
+        and not os.path.isfile(_arena_marker_path(slug))
+        and not os.path.isfile(_hsjson_marker_path(slug))
+    )
 
 
 def _has_arena_cached_photo(slug):
@@ -82,6 +93,10 @@ def _mark_arena_photo(slug, source_path=None):
             if source_path:
                 marker.write(f"local={Path(source_path).name}\n")
         os.replace(temporary, marker_path)
+        try:
+            os.remove(_legacy_arena_marker_path(slug))
+        except FileNotFoundError:
+            pass
         return True
     except OSError:
         return False
@@ -262,13 +277,21 @@ def _mark_hsjson_photo(slug):
     try:
         with open(_hsjson_marker_path(slug), "w", encoding="utf-8") as marker:
             marker.write("art.hearthstonejson.com\n")
-        try:
-            os.remove(_arena_marker_path(slug))
-        except FileNotFoundError:
-            pass
+        _clear_arena_photo_markers(slug)
         return True
     except OSError:
         return False
+
+
+def _clear_arena_photo_markers(slug):
+    for marker_path in (
+        _arena_marker_path(slug),
+        _legacy_arena_marker_path(slug),
+    ):
+        try:
+            os.remove(marker_path)
+        except OSError:
+            pass
 
 
 def _is_collectible_hero_card(card):
@@ -453,17 +476,26 @@ class GRequestsDownloader:
         if is_valid:
             ct = getattr(response, "headers", {}).get("Content-Type", "")
             if "image" in ct:
-                return _save_image_bytes_to_png(slug, response.content, ct)
+                saved = _save_image_bytes_to_png(slug, response.content, ct)
+                if saved:
+                    _clear_arena_photo_markers(slug)
+                return saved
             with open(f"{FOLDER}{slug}.png", "wb") as photo:
                 photo.write(response.content)
+            _clear_arena_photo_markers(slug)
             return True
         print(f"Blizzard API failed for {slug} (status {getattr(response, 'status_code', None)}). Trying alternatives...")
         if download_from_wiki(slug, name):
+            _clear_arena_photo_markers(slug)
             return True
         card_id = slug.split('-')[0] if '-' in slug else slug
         if download_from_hearthstonejson(card_id, slug):
+            _mark_hsjson_photo(slug)
             return True
-        return _download_from_art_api(slug)
+        downloaded = _download_from_art_api(slug)
+        if downloaded:
+            _clear_arena_photo_markers(slug)
+        return downloaded
 
     def process_cards(self, cards):
         session = get_http_session()
@@ -539,7 +571,10 @@ class GRequestsDownloader:
                 self.save_photo(slug, resp, card["name"])
             except Exception as e:
                 print(f"Download error for {slug}: {e}")
-                if not download_from_wiki(slug, card["name"]):
+                if download_from_wiki(slug, card["name"]):
+                    _clear_arena_photo_markers(slug)
+                else:
                     card_id = card.get("id") or (slug.split('-')[0] if '-' in slug else None)
                     if card_id:
-                        download_from_hearthstonejson(card_id, slug)
+                        if download_from_hearthstonejson(card_id, slug):
+                            _mark_hsjson_photo(slug)

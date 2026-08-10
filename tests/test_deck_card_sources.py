@@ -1,7 +1,8 @@
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
 
 from PIL import Image
 
@@ -200,7 +201,7 @@ class DeckCardSourcesTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             folder = f"{directory}/"
             image_path = Path(directory) / "123-test.png"
-            marker_path = Path(directory) / "123-test.arena-v1"
+            marker_path = Path(directory) / "123-test.arena-v2"
             source = Image.new("RGB", (100, 150), "blue")
             source_path = Path(directory) / "source.webp"
             source.save(source_path, "WEBP")
@@ -219,6 +220,67 @@ class DeckCardSourcesTest(unittest.TestCase):
             self.assertTrue(marker_path.is_file())
             with Image.open(image_path) as result:
                 self.assertEqual(result.size, (100, 150))
+
+    def test_legacy_arena_marker_does_not_make_card_ready(self):
+        with tempfile.TemporaryDirectory() as directory:
+            folder = f"{directory}/"
+            (Path(directory) / "123-test.png").write_bytes(b"image" * 30)
+            (Path(directory) / "123-test.arena-v1").write_text(
+                "arena.hs-manacost.ru\n",
+                encoding="utf-8",
+            )
+
+            with patch.object(grequests_downloader, "FOLDER", folder):
+                self.assertFalse(
+                    grequests_downloader._has_arena_cached_photo("123-test")
+                )
+
+    def test_arena_placeholder_cache_is_replaced_by_hsjson_art(self):
+        with tempfile.TemporaryDirectory() as directory:
+            folder = f"{directory}/"
+            image_path = Path(directory) / "95650-core-icc-836.png"
+            Image.new("RGB", (512, 776), "white").save(image_path)
+            legacy_marker = Path(directory) / "95650-core-icc-836.arena-v1"
+            legacy_marker.write_text("arena.hs-manacost.ru\n", encoding="utf-8")
+
+            replacement = Path(directory) / "replacement.png"
+            Image.new("RGB", (512, 776), "blue").save(replacement)
+            response = SimpleNamespace(
+                status_code=200,
+                content=replacement.read_bytes(),
+                headers={"Content-Type": "image/png"},
+            )
+            session = MagicMock()
+            session.get.return_value = response
+            card = {
+                "id": 95650,
+                "dbfId": 95650,
+                "cardId": "CORE_ICC_836",
+                "slug": "95650-core-icc-836",
+                "name": "Дыхание Синдрагосы",
+                "image": "https://art.hearthstonejson.test/CORE_ICC_836.png",
+            }
+
+            with (
+                patch.object(grequests_downloader, "FOLDER", folder),
+                patch(
+                    "framework.grequests_downloader._use_local_arena_photo",
+                    return_value=False,
+                ),
+                patch(
+                    "deckview.integrations.manacost_api.get_card_image",
+                    side_effect=RuntimeError("Arena placeholder"),
+                ),
+                patch(
+                    "framework.grequests_downloader.get_http_session",
+                    return_value=session,
+                ),
+            ):
+                grequests_downloader.GRequestsDownloader().process_cards([card])
+
+            self.assertFalse(legacy_marker.exists())
+            with Image.open(image_path) as rendered:
+                self.assertEqual(rendered.getpixel((0, 0)), (0, 0, 255, 255))
 
     def test_arena_image_prefers_prewarmed_dbf_asset(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -284,7 +346,7 @@ class DeckCardSourcesTest(unittest.TestCase):
             self.assertEqual((cards / "123-test.png").read_bytes(), source_bytes)
             self.assertIn(
                 "TEST_123-full-blizzard-card_img_v6_blizzard.webp",
-                (cards / "123-test.arena-v1").read_text(encoding="utf-8"),
+                (cards / "123-test.arena-v2").read_text(encoding="utf-8"),
             )
 
     def test_local_arena_image_uses_dbf_prewarm_for_generated_card(self):
@@ -421,7 +483,7 @@ class DeckCardSourcesTest(unittest.TestCase):
             folder = f"{directory}/"
             image_path = Path(directory) / "125467-deathwing-worldbreaker.png"
             hsjson_marker = Path(directory) / "125467-deathwing-worldbreaker.hsjson-v1"
-            arena_marker = Path(directory) / "125467-deathwing-worldbreaker.arena-v1"
+            arena_marker = Path(directory) / "125467-deathwing-worldbreaker.arena-v2"
             arena_marker.write_text("arena\n", encoding="utf-8")
             Image.new("RGBA", (404, 558), "orange").save(image_path)
 

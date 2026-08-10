@@ -133,11 +133,12 @@ def _existing_slug(dbf_id: int, card_id: str) -> str:
                         _remember_main_slug(index, int(prefix), slug)
                 # Arena markers are authoritative for ordinary cards and much
                 # cheaper to scan than opening thousands of PNGs.
-                for marker in card_dir.glob("*.arena-v1"):
-                    slug = marker.name[: -len(".arena-v1")]
-                    prefix = slug.split("-", 1)[0]
-                    if prefix.isdigit():
-                        _remember_main_slug(index, int(prefix), slug)
+                for marker_suffix in (".arena-v2", ".arena-v1"):
+                    for marker in card_dir.glob(f"*{marker_suffix}"):
+                        slug = marker.name[: -len(marker_suffix)]
+                        prefix = slug.split("-", 1)[0]
+                        if prefix.isdigit():
+                            _remember_main_slug(index, int(prefix), slug)
                 for image in card_dir.glob("*.png"):
                     slug = image.stem
                     prefix = slug.split("-", 1)[0]

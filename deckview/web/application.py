@@ -248,6 +248,13 @@ def _wants_async_render(data) -> bool:
     )
 
 
+def _legacy_render_cache_read_enabled() -> bool:
+    return os.getenv(
+        "DECKVIEW_LEGACY_RENDER_CACHE_READ",
+        "0",
+    ).strip().lower() in {"1", "true", "yes", "on"}
+
+
 def _request_latency_ms(started_ns):
     return round((time.perf_counter_ns() - started_ns) / 1_000_000, 3)
 
@@ -512,7 +519,11 @@ def deckview_api_render():
             image_style=image_style,
         )
         source = "render_cache"
-        if cached_result is None and image_style == "classic":
+        if (
+            cached_result is None
+            and image_style == "classic"
+            and _legacy_render_cache_read_enabled()
+        ):
             # The old generated-decks cache predates render styles and is safe
             # only for the classic renderer.
             cached_result = find_cached(deck_code, deck_name)

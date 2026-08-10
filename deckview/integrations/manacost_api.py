@@ -601,6 +601,11 @@ def get_card_image(card_id: str, variant: str = "full") -> bytes:
         )
         if response.status_code >= 400 or not response.content:
             raise ManacostAPIError(f"Изображение карты: HTTP {response.status_code}")
+        image_source = str(
+            response.headers.get("X-Card-Image-Source") or ""
+        ).strip().lower()
+        if image_source == "placeholder":
+            raise ManacostAPIError("Изображение карты: Arena вернула placeholder")
         return bytes(response.content)
 
     return _cached(key, _IMAGE_CACHE_TTL_SECONDS, load)

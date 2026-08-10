@@ -280,6 +280,25 @@ class ManacostApiTests(unittest.TestCase):
             "https://arena.hs-manacost.ru/standard/cards/wild/TOY_809/",
         )
 
+    def test_card_image_rejects_arena_placeholder(self):
+        response = MagicMock(
+            status_code=200,
+            content=b"placeholder-image",
+            headers={"X-Card-Image-Source": "placeholder"},
+        )
+        session = MagicMock()
+        session.get.return_value = response
+
+        with (
+            patch.object(manacost_api, "_http_session", return_value=session),
+            patch.object(manacost_api, "_headers", return_value={}),
+        ):
+            with self.assertRaisesRegex(
+                manacost_api.ManacostAPIError,
+                "placeholder",
+            ):
+                manacost_api.get_card_image("CORE_ICC_836", "full")
+
     def test_cache_singleflight_collapses_concurrent_loaders(self):
         calls = 0
 

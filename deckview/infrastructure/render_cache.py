@@ -157,6 +157,10 @@ def _versions() -> dict[str, Any]:
             "DECKVIEW_CARD_DATA_VERSION",
             f"hsjson-{HSJSON_BUILD}",
         ).strip(),
+        "card_assets": os.getenv(
+            "DECKVIEW_CARD_ASSET_VERSION",
+            "arena-image-v2",
+        ).strip(),
         "locale": os.getenv(
             "DECKVIEW_RENDER_LOCALE",
             f"ru_RU/{HSJSON_LOCALE}",

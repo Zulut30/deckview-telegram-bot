@@ -1,5 +1,6 @@
 """Contract tests for the instrumented public render API."""
 
+import os
 import unittest
 from unittest.mock import MagicMock, patch
 
@@ -28,6 +29,7 @@ class WebApiPerformanceTests(unittest.TestCase):
             "deck_name": None,
         }
         with (
+            patch.dict(os.environ, {"DECKVIEW_LEGACY_RENDER_CACHE_READ": "1"}),
             patch.object(web_app, "_require_deckview_api_auth", return_value=None),
             patch.object(web_app, "lookup_render_cache", return_value=None),
             patch.object(web_app, "find_cached", return_value=cached),
@@ -44,6 +46,35 @@ class WebApiPerformanceTests(unittest.TestCase):
         self.assertTrue(response.get_json()["cached"])
         create_picture.assert_not_called()
         self.assertEqual(emit.call_args.kwargs["timings"]["cache_status"], "legacy_hit")
+
+    def test_versioned_cache_miss_skips_legacy_cache_by_default(self):
+        image = MagicMock()
+
+        with (
+            patch.dict(os.environ, {}, clear=False),
+            patch.object(web_app, "_require_deckview_api_auth", return_value=None),
+            patch.object(web_app, "lookup_render_cache", return_value=None),
+            patch.object(web_app, "find_cached") as legacy,
+            patch.object(
+                web_app,
+                "_run_create_picture",
+                return_value=(image, 100, "Маг", "Стандарт", [95650, 69674]),
+            ),
+            patch.object(web_app, "add_generated", return_value=1),
+            patch.object(web_app, "add_deck_cards"),
+            patch.object(web_app, "store_render_cache", return_value=None),
+            patch.object(web_app, "write_rendered_jpeg", return_value=False),
+            patch.object(web_app, "emit_render_timing"),
+        ):
+            os.environ.pop("DECKVIEW_LEGACY_RENDER_CACHE_READ", None)
+            response = self.client.post(
+                "/deckview-api/v1/render",
+                json={"deck_code": "code"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.get_json()["cached"])
+        legacy.assert_not_called()
 
     def test_cache_miss_preserves_jpeg_settings(self):
         image = MagicMock()
