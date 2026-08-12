@@ -11,6 +11,14 @@ class WebApiPerformanceTests(unittest.TestCase):
     def setUp(self):
         self.client = web_app.app.test_client()
 
+    def test_health_offers_corresponding_source(self):
+        response = self.client.get("/deckview-api/v1/health")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(payload["license"], "AGPL-3.0-or-later")
+        self.assertEqual(payload["source_code"], web_app.DECKVIEW_SOURCE_CODE_URL)
+
     def test_generated_render_cache_assets_are_immutable(self):
         response = self.client.get(
             "/static/generated/render-cache/missing/preview.webp",

@@ -6,7 +6,7 @@
     <a href="https://t.me/manacostcard_bot"><img alt="Telegram" src="https://img.shields.io/badge/Telegram-открыть_бота-229ED9?logo=telegram&logoColor=white"></a>
     <a href="https://github.com/Zulut30/deckview-telegram-bot/actions/workflows/tests.yml"><img alt="CI" src="https://github.com/Zulut30/deckview-telegram-bot/actions/workflows/tests.yml/badge.svg"></a>
     <img alt="Python" src="https://img.shields.io/badge/Python-3.10+-3776AB?logo=python&logoColor=white">
-    <img alt="License" src="https://img.shields.io/badge/license-proprietary-red">
+    <a href="LICENSE"><img alt="License: AGPL v3 or later" src="https://img.shields.io/badge/license-AGPL--3.0--or--later-blue"></a>
   </p>
 </div>
 
@@ -111,11 +111,18 @@ production workflow строит immutable release, проверяет Reno-ко
 
 ## Лицензия
 
-Исходный код Deckview доступен только для просмотра. Без предварительного
-письменного разрешения Zulut30 запрещены копирование, запуск, изменение,
-распространение, развёртывание собственного бота или API и любое прямое либо
-косвенное коммерческое использование. Полные условия приведены в
-[Deckview Restricted Source License](LICENSE).
+Copyright © 2026 Zulut30.
+
+Deckview распространяется на условиях
+[GNU Affero General Public License v3.0 или более поздней версии](LICENSE)
+(`AGPL-3.0-or-later`). Копии и производные работы разрешено использовать,
+изменять и распространять только с сохранением этой лицензии и доступом к
+соответствующему исходному коду. Если изменённая версия взаимодействует с
+пользователями по сети — например, работает как бот, сайт или API — этим
+пользователям также должен быть предложен доступ к её полному исходному коду.
+
+AGPL распространяется на производные работы на основе кода Deckview, но не на
+независимую реализацию той же идеи, которая не копирует охраняемый код проекта.
 
 Отдельные исходные компоненты и ранее опубликованные версии сохраняют свои
 первоначальные права; обязательные уведомления перечислены в

@@ -43,6 +43,7 @@ from aiogram.types import (
 from deckview.config import (
     ADMIN_IDS, CHANNEL_ID, DISCUSSION_GROUP_ID, HSJSON_CARDS_URL, HSGURU_INTERVAL_SECONDS, TOKEN,
     TELEGRAM_API_BASE_URL,
+    DECKVIEW_SOURCE_CODE_URL,
     DECKVIEW_UPDATE_MODE,
     DECKVIEW_WEBHOOK_DROP_PENDING_UPDATES,
     DECKVIEW_WEBHOOK_HOST,
@@ -691,7 +692,9 @@ async def process_start_command(message: types.Message):
         "• /help — все команды\n"
         "• /card — картинка карты по названию или id\n"
         "• /compare — сравнить две колоды\n"
-        "• /findwith — поиск колод по картам"
+        "• /findwith — поиск колод по картам\n\n"
+        f'<a href="{html.escape(DECKVIEW_SOURCE_CODE_URL, quote=True)}">Исходный код</a>'
+        " · AGPL-3.0-or-later"
     )
     if message.chat.type == "private":
         await message.answer(text, reply_markup=MAIN_REPLY_KEYBOARD)

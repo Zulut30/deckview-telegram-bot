@@ -8,6 +8,13 @@ load_dotenv(override=True)
 # strip() removes accidental whitespace/CRLF from environment values.
 TOKEN = (os.getenv("TOKEN") or os.getenv("BOT_TOKEN") or "").strip()
 TELEGRAM_API_BASE_URL = os.getenv("TELEGRAM_API_BASE_URL", "").strip().rstrip("/")
+DECKVIEW_SOURCE_CODE_URL = (
+    os.getenv(
+        "DECKVIEW_SOURCE_CODE_URL",
+        "https://github.com/Zulut30/deckview-telegram-bot",
+    ).strip()
+    or "https://github.com/Zulut30/deckview-telegram-bot"
+)
 
 # Telegram updates delivery. `webhook` is intended for the local telegram-bot-api
 # instance on 127.0.0.1; `polling` remains a fast rollback mode.

@@ -12,7 +12,15 @@ import threading
 import time
 from datetime import datetime
 from pathlib import Path
-from deckview.config import API_TOKEN, CHANNEL_ID, DASHBOARD_SECRET, PUBLIC_API_AUTH_REQUIRED, WEB_HOST, WEB_PORT
+from deckview.config import (
+    API_TOKEN,
+    CHANNEL_ID,
+    DASHBOARD_SECRET,
+    DECKVIEW_SOURCE_CODE_URL,
+    PUBLIC_API_AUTH_REQUIRED,
+    WEB_HOST,
+    WEB_PORT,
+)
 from deckview.web.dashboard import bp as dashboard_bp, admin_bp
 from deckview.integrations.hsguru_archetype import recognize_archetype
 from deckview.integrations.hsguru_fetch import (
@@ -357,6 +365,8 @@ def deckview_api_health():
         "service": "deckview",
         "status": "ok",
         "public_api": True,
+        "license": "AGPL-3.0-or-later",
+        "source_code": DECKVIEW_SOURCE_CODE_URL,
         "auth_required": bool(PUBLIC_API_AUTH_REQUIRED),
         "publish_auth_required": True,
         "endpoints": {

@@ -434,6 +434,29 @@ class BackgroundUploadTests(unittest.TestCase):
 
 
 class ManagedChatRegistrationTests(unittest.IsolatedAsyncioTestCase):
+    async def test_start_message_offers_corresponding_source(self):
+        message = SimpleNamespace(
+            text="/start",
+            chat=SimpleNamespace(
+                id=42,
+                type="private",
+                title=None,
+                first_name="Игрок",
+            ),
+            from_user=SimpleNamespace(
+                id=42,
+                username="player",
+                first_name="Игрок",
+            ),
+            answer=AsyncMock(),
+        )
+        with patch.object(main, "ensure_bot_user"):
+            await main.process_start_command(message)
+
+        response_text = message.answer.await_args.args[0]
+        self.assertIn(main.DECKVIEW_SOURCE_CODE_URL, response_text)
+        self.assertIn("AGPL-3.0-or-later", response_text)
+
     def test_private_claim_payload_round_trips_negative_chat_id(self):
         payload = main._manage_chat_start_payload(-100987654321)
         self.assertEqual(

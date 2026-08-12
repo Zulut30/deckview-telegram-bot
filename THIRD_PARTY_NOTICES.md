@@ -2,7 +2,8 @@
 
 Deckview contains or is derived from components that were previously published
 under third-party terms. Those terms continue to apply to the corresponding
-material and are not replaced by the Deckview Restricted Source License.
+material and are not replaced by the GNU Affero General Public License that
+governs Deckview's own code.
 
 ## H4X4D — MIT License
 
