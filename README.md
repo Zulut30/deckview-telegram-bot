@@ -4,7 +4,7 @@
   <p><strong>Telegram-бот и HTTP API для быстрых изображений колод Hearthstone</strong></p>
   <p>
     <a href="https://t.me/manacostcard_bot"><img alt="Telegram" src="https://img.shields.io/badge/Telegram-открыть_бота-229ED9?logo=telegram&logoColor=white"></a>
-    <a href="https://github.com/Zulut30/deckview-telegram-bot/actions/workflows/tests.yml"><img alt="CI" src="https://github.com/Zulut30/deckview-telegram-bot/actions/workflows/tests.yml/badge.svg"></a>
+    <a href="https://github.com/Manacost-Labs/Deckview-TG/actions/workflows/tests.yml"><img alt="CI" src="https://github.com/Manacost-Labs/Deckview-TG/actions/workflows/tests.yml/badge.svg"></a>
     <img alt="Python" src="https://img.shields.io/badge/Python-3.10+-3776AB?logo=python&logoColor=white">
     <a href="LICENSE"><img alt="License: AGPL v3 or later" src="https://img.shields.io/badge/license-AGPL--3.0--or--later-blue"></a>
   </p>
@@ -49,7 +49,7 @@ flowchart LR
 Требуются Python 3.10+, Redis (для очереди) и системные библиотеки Pillow.
 
 ```bash
-git clone https://github.com/Zulut30/deckview-telegram-bot.git
+git clone https://github.com/Manacost-Labs/Deckview-TG.git
 cd deckview-telegram-bot
 python3 -m venv .venv
 . .venv/bin/activate

@@ -11,9 +11,9 @@ TELEGRAM_API_BASE_URL = os.getenv("TELEGRAM_API_BASE_URL", "").strip().rstrip("/
 DECKVIEW_SOURCE_CODE_URL = (
     os.getenv(
         "DECKVIEW_SOURCE_CODE_URL",
-        "https://github.com/Zulut30/deckview-telegram-bot",
+        "https://github.com/Manacost-Labs/Deckview-TG",
     ).strip()
-    or "https://github.com/Zulut30/deckview-telegram-bot"
+    or "https://github.com/Manacost-Labs/Deckview-TG"
 )
 
 # Telegram updates delivery. `webhook` is intended for the local telegram-bot-api

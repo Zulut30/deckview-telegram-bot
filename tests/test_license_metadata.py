@@ -4,6 +4,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 SPDX_LICENSE = "AGPL-3.0-or-later"
+SOURCE_URL = "https://github.com/Manacost-Labs/Deckview-TG"
 
 
 class LicenseMetadataTests(unittest.TestCase):
@@ -35,6 +36,18 @@ class LicenseMetadataTests(unittest.TestCase):
             "изменённая версия взаимодействует с пользователями по сети",
             normalized_readme,
         )
+
+    def test_source_offer_uses_canonical_public_repository(self):
+        paths = (
+            ROOT / ".env.example",
+            ROOT / "README.md",
+            ROOT / "deckview/config.py",
+            ROOT / "deploy/github_deploy.sh",
+        )
+
+        for path in paths:
+            with self.subTest(path=path):
+                self.assertIn(SOURCE_URL, path.read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":
